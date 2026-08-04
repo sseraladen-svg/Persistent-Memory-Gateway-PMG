@@ -1,0 +1,36 @@
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directory
+data/
+
+# Redis
+dump.rdb
+
+# Configuration with API keys
+config.json
+config.local.json
+*.local.json

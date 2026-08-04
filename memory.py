@@ -9,7 +9,7 @@ from pathlib import Path
 import redis
 
 DATA = Path(__file__).parent / "data"
-DATA.mkdir(exist_ok=True)
+DATA.mkdir(exist_ok=True, parents=True)
 
 SYSTEM = (
     "You are JARVIS, a personal AI assistant. Be concise and helpful. "
@@ -18,10 +18,8 @@ SYSTEM = (
 
 LEARN_TRIGGERS = (
     "remember", "don't forget", "keep in mind", "learn this", "save this",
-    "my name is", "call me", "i am ", "i'm ", "i work", "i live in", "i study",
     "act like", "behave like", "respond like", "talk like", "speak like",
-    "from now on", "always ", "never ", "i prefer", "i like", "i hate",
-    "my favorite", "about me", "i'm from", "my age", "my birthday",
+    "from now on", "always ", "never ", "note that", "important to know",
 )
 
 BEHAVIOR_TRIGGERS = (
@@ -30,8 +28,7 @@ BEHAVIOR_TRIGGERS = (
 )
 
 PROFILE_TRIGGERS = (
-    "my name is", "call me", "i am ", "i'm ", "i work", "i live", "i study",
-    "about me", "i'm from", "my age", "my birthday", "my job",
+    # Disabled for privacy - no personal profile learning
 )
 
 _chroma = None
@@ -129,8 +126,7 @@ def _category(text: str) -> str:
     t = text.lower()
     if any(k in t for k in BEHAVIOR_TRIGGERS):
         return "behavior"
-    if any(k in t for k in PROFILE_TRIGGERS):
-        return "profile"
+    # Profile categorization disabled for privacy
     return "fact"
 
 
@@ -197,13 +193,11 @@ def get_learned_context() -> str:
     if not rows:
         r.setex("learned:context", 300, "")
         return ""
-    profiles, behaviors, facts = [], [], []
+    behaviors, facts = [], []
     for row in rows:
-        bucket = {"profile": profiles, "behavior": behaviors, "fact": facts}.get(row["category"], facts)
+        bucket = {"behavior": behaviors, "fact": facts}.get(row["category"], facts)
         bucket.append(row["content"])
     parts = []
-    if profiles:
-        parts.append("About the user:\n" + "\n".join(f"- {p}" for p in profiles))
     if behaviors:
         parts.append("How you must behave:\n" + "\n".join(f"- {b}" for b in behaviors))
     if facts:

@@ -4,3 +4,4 @@ chromadb
 redis
 fakeredis
 httpx
+pydantic

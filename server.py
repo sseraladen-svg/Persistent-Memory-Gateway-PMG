@@ -11,41 +11,74 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 import memory
+import model_providers
 
-MODEL = "llama3.1:8b"
-OLLAMA = "http://localhost:11434/api/chat"
 ROOT = Path(__file__).parent
 
-OLLAMA_OPTS = {
-    "num_ctx": 2048,
-    "num_predict": 300,
-    "temperature": 0.6,
-    "top_p": 0.9,
-    "repeat_penalty": 1.1,
-}
+# Load configuration
+def load_config():
+    config_path = ROOT / "config.json"
+    example_config_path = ROOT / "config.example.json"
+    
+    if config_path.exists():
+        with open(config_path) as f:
+            return json.load(f)
+    elif example_config_path.exists():
+        # Copy example config as default
+        import shutil
+        shutil.copy(example_config_path, config_path)
+        with open(config_path) as f:
+            return json.load(f)
+    else:
+        return {
+            "default_provider": "ollama",
+            "default_model": "gemma4:latest",
+            "providers": {
+                "ollama": {
+                    "enabled": True,
+                    "base_url": "http://localhost:11434",
+                    "models": ["gemma4:latest"]
+                }
+            },
+            "generation_params": {
+                "temperature": 0.7,
+                "max_tokens": 300,
+                "top_p": 0.9,
+                "num_ctx": 2048
+            }
+        }
 
-# Long read timeout — first token can be slow on CPU
-OLLAMA_TIMEOUT = httpx.Timeout(connect=10.0, read=600.0, write=30.0, pool=10.0)
+config = load_config()
+current_provider = None
+current_model = config.get("default_model", "gemma4:latest")
+provider_name = config.get("default_provider", "ollama")
+
+print(f"Loaded config - Provider: {provider_name}, Model: {current_model}")
 
 
-async def _warm_ollama(client: httpx.AsyncClient):
-    try:
-        await client.post(
-            OLLAMA,
-            json={"model": MODEL, "messages": [{"role": "user", "content": "hi"}], "stream": False},
-            timeout=OLLAMA_TIMEOUT,
-        )
-    except httpx.HTTPError:
-        pass
+async def initialize_provider():
+    global current_provider, provider_name
+    provider_config = config["providers"].get(provider_name, {})
+    if provider_config.get("enabled", True):
+        try:
+            current_provider = model_providers.get_provider(provider_name, provider_config)
+        except Exception as e:
+            print(f"Error initializing provider {provider_name}: {e}")
+            # Fallback to first available provider
+            for p_name, p_config in config["providers"].items():
+                if p_config.get("enabled", True):
+                    try:
+                        current_provider = model_providers.get_provider(p_name, p_config)
+                        provider_name = p_name
+                        break
+                    except:
+                        continue
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    client = httpx.AsyncClient(timeout=OLLAMA_TIMEOUT)
-    app.state.http = client
-    asyncio.create_task(_warm_ollama(client))
+    await initialize_provider()
     yield
-    await client.aclose()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -65,6 +98,19 @@ app.mount("/static", StaticFiles(directory=ROOT), name="static")
 class ChatRequest(BaseModel):
     message: str
     session_id: str
+    provider: str = None
+    model: str = None
+
+
+class SettingsRequest(BaseModel):
+    openai_key: str = None
+    anthropic_key: str = None
+    huggingface_key: str = None
+    custom_key: str = None
+    custom_endpoint: str = None
+    custom_model: str = None
+    temperature: float = None
+    max_tokens: int = None
 
 
 def build_messages(history: list):
@@ -83,13 +129,129 @@ def index():
 
 @app.get("/api/health")
 async def health():
-    ollama_ok = False
+    provider_ok = False
+    if current_provider:
+        provider_ok = await current_provider.health_check()
+    
+    return {
+        "provider": provider_name,
+        "model": current_model,
+        "provider_status": "ok" if provider_ok else "error",
+        **memory.status()
+    }
+
+
+@app.get("/api/providers")
+async def get_providers():
+    """Get available providers and their models"""
+    providers_info = {}
+    for p_name, provider_config in config["providers"].items():
+        if provider_config.get("enabled", True):
+            try:
+                provider = model_providers.get_provider(p_name, provider_config)
+                providers_info[p_name] = {
+                    "enabled": True,
+                    "models": provider.get_available_models(),
+                    "config": {k: v for k, v in provider_config.items() if k != "api_key"}
+                }
+            except Exception as e:
+                providers_info[p_name] = {
+                    "enabled": True,
+                    "error": str(e),
+                    "models": []
+                }
+        else:
+            providers_info[p_name] = {
+                "enabled": False,
+                "models": []
+            }
+    
+    return {
+        "current_provider": provider_name,
+        "current_model": current_model,
+        "providers": providers_info
+    }
+
+
+@app.post("/api/switch_provider")
+async def switch_provider(provider_data: dict):
+    """Switch to a different provider/model"""
+    global current_provider, current_model, provider_name
+    
+    new_provider = provider_data.get("provider")
+    new_model = provider_data.get("model")
+    
+    if new_provider not in config["providers"]:
+        return {"error": f"Provider {new_provider} not configured"}
+    
+    provider_config = config["providers"][new_provider]
+    if not provider_config.get("enabled", True):
+        return {"error": f"Provider {new_provider} is disabled"}
+    
     try:
-        r = await app.state.http.get("http://localhost:11434/api/tags", timeout=3)
-        ollama_ok = r.status_code == 200
-    except httpx.HTTPError:
-        pass
-    return {"ollama": ollama_ok, **memory.status()}
+        current_provider = model_providers.get_provider(new_provider, provider_config)
+        provider_name = new_provider
+        current_model = new_model or provider_config.get("models", [""])[0]
+        
+        # Verify provider is accessible
+        if not await current_provider.health_check():
+            return {"error": f"Provider {new_provider} is not accessible"}
+        
+        return {
+            "success": True,
+            "provider": provider_name,
+            "model": current_model
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.post("/api/settings")
+async def save_settings(settings: SettingsRequest):
+    """Save user settings to config"""
+    global config
+    
+    if settings.openai_key:
+        config["providers"]["openai"]["api_key"] = settings.openai_key
+        config["providers"]["openai"]["enabled"] = True
+    
+    if settings.anthropic_key:
+        config["providers"]["anthropic"]["api_key"] = settings.anthropic_key
+        config["providers"]["anthropic"]["enabled"] = True
+    
+    if settings.huggingface_key:
+        config["providers"]["huggingface"]["api_key"] = settings.huggingface_key
+        config["providers"]["huggingface"]["enabled"] = True
+    
+    if settings.custom_key:
+        config["providers"]["custom"]["api_key"] = settings.custom_key
+        config["providers"]["custom"]["enabled"] = True
+    
+    if settings.custom_endpoint:
+        config["providers"]["custom"]["base_url"] = settings.custom_endpoint
+        config["providers"]["custom"]["enabled"] = True
+    
+    if settings.custom_model:
+        config["providers"]["custom"]["models"] = [settings.custom_model]
+        config["providers"]["custom"]["enabled"] = True
+    
+    if settings.temperature is not None:
+        config["generation_params"]["temperature"] = settings.temperature
+    
+    if settings.max_tokens is not None:
+        config["generation_params"]["max_tokens"] = settings.max_tokens
+    
+    # Save to config file
+    try:
+        with open(ROOT / "config.json", "w") as f:
+            json.dump(config, f, indent=2)
+    except Exception as e:
+        return {"error": f"Failed to save config: {str(e)}"}
+    
+    # Reinitialize provider if needed
+    await initialize_provider()
+    
+    return {"success": True, "message": "Settings saved successfully"}
 
 
 @app.get("/api/memory")
@@ -99,6 +261,28 @@ def list_memory():
 
 @app.post("/api/chat")
 async def chat(req: ChatRequest):
+    global current_provider, current_model
+    
+    # Use provider/model from request or defaults
+    provider = req.provider or provider_name
+    model = req.model or current_model
+    
+    # Switch provider if requested
+    if provider != provider_name:
+        try:
+            provider_config = config["providers"].get(provider, {})
+            current_provider = model_providers.get_provider(provider, provider_config)
+            current_model = model
+        except Exception as e:
+            async def error_stream():
+                yield f"Error switching provider: {str(e)}"
+            return StreamingResponse(error_stream(), media_type="text/plain")
+    
+    if not current_provider:
+        async def error_stream():
+            yield "Error: No provider configured"
+        return StreamingResponse(error_stream(), media_type="text/plain")
+    
     learned_cat, history = await asyncio.gather(
         asyncio.to_thread(memory.learn_from_message, req.message),
         asyncio.to_thread(memory.get_history, req.session_id, 6),
@@ -108,35 +292,24 @@ async def chat(req: ChatRequest):
     messages = build_messages(history)
 
     headers = {"X-Learned": learned_cat} if learned_cat else {}
+    gen_params = config.get("generation_params", {})
 
     async def stream():
         reply = ""
         try:
-            async with app.state.http.stream(
-                "POST",
-                OLLAMA,
-                json={
-                    "model": MODEL,
-                    "messages": messages,
-                    "stream": True,
-                    "keep_alive": "30m",
-                    "options": OLLAMA_OPTS,
-                },
-            ) as res:
-                res.raise_for_status()
-                async for line in res.aiter_lines():
-                    if not line.strip():
-                        continue
-                    chunk = json.loads(line)
-                    token = chunk.get("message", {}).get("content", "")
-                    if token:
-                        reply += token
-                        yield token
-        except httpx.HTTPError as e:
-            yield f"\n[Error: {type(e).__name__} — is Ollama running?]"
+            async for token in current_provider.chat_stream(
+                messages=messages,
+                model=model,
+                **gen_params
+            ):
+                reply += token
+                yield token
+        except Exception as e:
+            yield f"\n[Error: {type(e).__name__} — {str(e)}]"
             return
-        if reply:
-            await asyncio.to_thread(memory.save_message, req.session_id, "assistant", reply)
-            await asyncio.to_thread(memory.cache_session, req.session_id, history)
+        finally:
+            if reply:
+                await asyncio.to_thread(memory.save_message, req.session_id, "assistant", reply)
+                await asyncio.to_thread(memory.cache_session, req.session_id, history)
 
     return StreamingResponse(stream(), media_type="text/plain", headers=headers)
