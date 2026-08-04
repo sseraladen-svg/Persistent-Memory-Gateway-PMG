@@ -24,10 +24,8 @@ def load_config():
         with open(config_path) as f:
             return json.load(f)
     elif example_config_path.exists():
-        # Copy example config as default
-        import shutil
-        shutil.copy(example_config_path, config_path)
-        with open(config_path) as f:
+        # Use example config as default
+        with open(example_config_path) as f:
             return json.load(f)
     else:
         return {
@@ -243,7 +241,8 @@ async def save_settings(settings: SettingsRequest):
     
     # Save to config file
     try:
-        with open(ROOT / "config.json", "w") as f:
+        config_path = ROOT / "config.json"
+        with open(config_path, "w") as f:
             json.dump(config, f, indent=2)
     except Exception as e:
         return {"error": f"Failed to save config: {str(e)}"}
