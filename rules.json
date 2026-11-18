@@ -1,0 +1,32 @@
+{
+  "budget_tokens": 400,
+  "always_load_share": 0.4,
+  "max_chunks": 6,
+  "min_chars": 3,
+  "never_store_patterns": [
+    "sk-[A-Za-z0-9_-]{16,}",
+    "\\b(?:\\d[ -]?){13,19}\\b",
+    "(?i)password\\s*(is|:|=)",
+    "(?i)api[_ -]?key\\s*(is|:|=)"
+  ],
+  "kinds": {
+    "behavior": {
+      "triggers": ["from now on", "always ", "never ", "act like", "respond like", "talk like", "speak like", "be more ", "be less ", "don't be "],
+      "always_load": true,
+      "weight": 2.0,
+      "half_life_days": null
+    },
+    "preference": {
+      "triggers": ["i prefer", "i like", "i don't like", "i hate", "my favorite"],
+      "always_load": false,
+      "weight": 1.3,
+      "half_life_days": 365
+    },
+    "fact": {
+      "triggers": ["remember", "don't forget", "keep in mind", "learn this", "save this", "note that", "important to know"],
+      "always_load": false,
+      "weight": 1.0,
+      "half_life_days": null
+    }
+  }
+}

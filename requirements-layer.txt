@@ -1,0 +1,7 @@
+# Memory layer (pmg_core.py + mcp_server.py): MCP only, no database server needed
+mcp
+
+# Only for proxy.py (OpenAI-compatible proxy for routers/frameworks)
+fastapi
+uvicorn
+httpx
