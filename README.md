@@ -1,399 +1,171 @@
-# AI Assistant-PMG
-
 <div align="center">
 
-**A Modern, Multi-Model AI Assistant with Voice Input & Custom Provider Support**
+# Persistent Memory Gateway (PMG)
 
-[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-green.svg)](https://fastapi.tiangolo.com)
-[![License](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
+### One small memory layer for every AI model you use.
 
-[⚡ Features](#-features) • [🚀 Installation](#-installation) • [🎯 Providers](#-supported-providers) • [🎨 Frontend](#-modern-frontend) • [📖 API](#-api-endpoints)
+PMG remembers what matters about you, forgets what doesn't, and hands any model
+only the few lines it needs, so conversations stay personal while token usage stays low.
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB.svg?logo=python&logoColor=white)](https://www.python.org)
+[![MCP](https://img.shields.io/badge/Protocol-MCP-6E56CF.svg)](https://modelcontextprotocol.io)
+[![Storage](https://img.shields.io/badge/Storage-SQLite%20FTS5-003B57.svg?logo=sqlite&logoColor=white)](https://www.sqlite.org/fts5.html)
+[![Tests](https://img.shields.io/badge/core%20tests-8%20passing-2EA44F.svg)](test_core.py)
+
+[Why PMG](#why-pmg) · [How it works](#how-it-works) · [Quick start](#quick-start) · [Integrations](#integrations) · [Configuration](#configuration) · [Design notes](#design-notes) · [Project layout](#project-layout)
 
 </div>
 
 ---
 
-## ✨ Features
+## Why PMG
 
-- 🎯 **Multi-Model Support** - Switch between Ollama, OpenAI, Anthropic, HuggingFace, and Custom APIs
-- 🎤 **Voice Input** - Speech-to-text for hands-free chatting
-- 🎨 **Modern UI** - Beautiful dark theme with gradient accents
-- ⚙️ **Settings Panel** - Configure API keys and parameters in-app
-- 🧠 **Memory System** - JARVIS learns and remembers information
-- 🔄 **Streaming Responses** - Real-time AI responses
-- 🔒 **Privacy-Focused** - No chat history storage, secure API key handling
-- 📊 **Health Monitoring** - Real-time connection status
+Every AI chat starts from zero. The usual fix is to paste more history into the prompt, which costs
+tokens, slows responses, and buries the useful part under noise.
 
----
+PMG takes the opposite approach. It is a **layer**, not another chatbot. It sits beside the models and
+tools you already use (Claude, ChatGPT-style clients, routers such as OpenRouter or OmniRoute) and does
+three things:
 
-## 🚀 Installation
+| | |
+|---|---|
+| **Remember** | Turns durable facts, preferences and standing instructions into tiny, self-contained chunks. |
+| **Select** | For each new message, loads only the chunks that match it, inside a hard token budget. |
+| **Protect** | Refuses to store secrets such as API keys, passwords and card numbers. |
 
-### Prerequisites
+The result is memory that follows you across models and sessions, with a predictable, small footprint.
 
-- Python 3.11 or higher
-- Ollama (for local models) or API keys for cloud providers
+## How it works
 
-### Step 1: Clone the Repository
-
-```bash
-git clone https://github.com/sseraladen-svg/Jarvis.git
-cd Jarvis
+```mermaid
+flowchart LR
+    U[You] --> C[Any AI client or framework]
+    C -- "MCP tools" --> M[PMG MCP server]
+    C -- "OpenAI-compatible calls" --> P[PMG proxy]
+    M --> K[PMG core]
+    P --> K
+    K --> S[(SQLite + FTS5<br/>tiny chunks)]
+    R[rules.json] --> K
+    L[Optional LLM<br/>classifier only] -. "decides what to store,<br/>tunes the rules" .-> K
+    P --> UP[Upstream model API]
 ```
 
-### Step 2: Install Dependencies
+**Storing.** A message is classified as a `behavior` (standing instruction), `preference` or `fact`.
+The classifier is rule-based by default, driven by keyword triggers in `rules.json`. If you configure a
+model, it can classify more intelligently, but its answer is validated (allowed kinds, length, secret
+patterns) and the layer falls back to the rules on any problem. The model never chats with you through PMG.
+
+**Retrieving.** Behavior rules load every time, up to a share of the budget. Everything else is ranked
+with BM25 full-text search, then weighted by kind, importance and recency decay, and added until the token
+budget or chunk limit is reached. Chunks that keep being useful are counted, so you can see what earns its place.
+
+**Updating.** A fact can own a named slot (for example `user.city`). Saving a new value replaces the old one
+instead of piling up contradictions. Exact duplicates are merged.
+
+## Quick start
 
 ```bash
-pip install -r requirements.txt
+git clone https://github.com/sseraladen-svg/persistent-memory-gateway-pmg
+cd persistent-memory-gateway-pmg
+pip install -r requirements-layer.txt
+python test_core.py
 ```
 
-### Step 3: Configure JARVIS
+Run the MCP server for a local client:
 
 ```bash
-cp config.example.json config.json
+python mcp_server.py
 ```
 
-Edit `config.json` to add your API keys and configure providers.
+## Integrations
 
-### Step 4: Start the Server
+PMG offers two ways in. Full steps are in [INTEGRATE.md](INTEGRATE.md).
 
-**Windows:**
-```bash
-start.bat
-```
-
-**Linux/macOS:**
-```bash
-python -m uvicorn server:app --host 127.0.0.1 --port 8081
-```
-
-Visit `http://127.0.0.1:8081` to access JARVIS!
-
----
-
-## 🎯 Supported Providers
-
-### 1. 🦙 Ollama (Local Models)
-
-**Best for:** Privacy, free local inference, custom models
+### 1. MCP server: Claude Desktop, Claude Code, Cursor and other MCP clients
 
 ```json
-{
-  "ollama": {
-    "enabled": true,
-    "base_url": "http://localhost:11434",
-    "models": ["gemma4:latest", "llama3.1:8b", "mistral:latest"]
-  }
-}
+{ "mcpServers": { "pmg": { "command": "python", "args": ["/absolute/path/to/mcp_server.py"] } } }
 ```
 
-**Setup:**
-```bash
-# Install Ollama
-curl -fsSL https://ollama.com/install.sh | sh
+| Tool | Purpose |
+|---|---|
+| `memory_retrieve` | Return the relevant chunks for a message, within a token budget. |
+| `memory_remember` | Store a durable fact, preference or instruction. |
+| `memory_forget` | Delete one chunk by id. |
+| `memory_list` | Review what is stored. |
+| `memory_tune` | Ask the optional LLM to propose better numeric settings; applied only on request. |
 
-# Pull models
-ollama pull gemma4
-ollama pull llama3.1
-```
+For clients that need a URL, `python mcp_server.py --http --port 8765` serves streamable HTTP. Put
+authentication in front of it before exposing it beyond your own machine.
 
-### 2. 🔵 OpenAI
-
-**Best for:** GPT-4, GPT-3.5, reliable performance
-
-```json
-{
-  "openai": {
-    "enabled": true,
-    "api_key": "sk-your-openai-api-key",
-    "base_url": "https://api.openai.com/v1",
-    "models": ["gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"]
-  }
-}
-```
-
-### 3. 🟣 Anthropic Claude
-
-**Best for:** Claude 3.5 Sonnet, long context, analysis tasks
-
-```json
-{
-  "anthropic": {
-    "enabled": true,
-    "api_key": "sk-ant-your-anthropic-api-key",
-    "base_url": "https://api.anthropic.com",
-    "models": ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"]
-  }
-}
-```
-
-### 4. 🤗 HuggingFace
-
-**Best for:** Open-source models, custom model deployment
-
-```json
-{
-  "huggingface": {
-    "enabled": true,
-    "api_key": "hf-your-huggingface-token",
-    "base_url": "https://api-inference.huggingface.co",
-    "models": ["meta-llama/Llama-2-7b-chat-hf", "mistralai/Mistral-7B-Instruct-v0.2"]
-  }
-}
-```
-
-### 5. 🔧 Custom API
-
-**Best for:** Self-hosted models, OpenAI-compatible endpoints
-
-```json
-{
-  "custom": {
-    "enabled": true,
-    "api_key": "your-custom-api-key",
-    "base_url": "https://your-custom-endpoint.com/v1",
-    "models": ["custom-model-name"]
-  }
-}
-```
-
----
-
-## 🎨 Modern Frontend
-
-### Beautiful Dark Theme
-
-- Gradient accents with purple/blue color scheme
-- Smooth animations and transitions
-- Responsive design for all screen sizes
-- Intuitive navigation sidebar
-
-### Voice Input
-
-- 🎤 Click the microphone button to start voice input
-- 🗣️ Speak naturally, JARVIS transcribes your speech
-- ⏹️ Click again to stop recording
-
-### Settings Panel
-
-- Configure API keys securely in the UI
-- Adjust generation parameters (temperature, max tokens)
-- Set custom model endpoints
-- Settings are saved to `config.json` automatically
-
-### Model Selection
-
-- Dynamic provider switching
-- Real-time model availability
-- Status indicators for connection health
-
----
-
-## 📖 API Endpoints
-
-### Health Check
+### 2. OpenAI-compatible proxy: routers and frameworks
 
 ```bash
-GET /api/health
+export PMG_UPSTREAM_URL=https://openrouter.ai/api/v1
+uvicorn proxy:app --port 8766
 ```
 
-**Response:**
-```json
-{
-  "provider": "ollama",
-  "model": "gemma4:latest",
-  "provider_status": "ok",
-  "sqlite": {"ok": true, "messages": 5, "learned": 0},
-  "chromadb": {"ok": true, "memories": 0},
-  "redis": {"ok": true, "mode": "embedded"}
-}
-```
+Point your client's base URL at `http://127.0.0.1:8766/v1` and keep using your normal API key. Each request
+gets one compact system message of relevant memory; the user's message is classified and stored afterwards.
+The proxy is new and has been syntax-checked but not yet exercised against a live router, so treat it as experimental.
 
-### Get Providers
+## Configuration
+
+All behavior lives in [`rules.json`](rules.json):
+
+| Setting | Meaning |
+|---|---|
+| `budget_tokens` | Hard cap on memory injected per request (default 400). |
+| `always_load_share` | Portion of the budget reserved for always-on behavior rules. |
+| `max_chunks` | Upper limit on chunks per request. |
+| `kinds.*` | Trigger phrases, ranking weight, always-load flag and recency half-life per kind. |
+| `never_store_patterns` | Regular expressions for content that must never be saved. |
+
+Optional offline classifier, using any OpenAI-compatible endpoint such as a local Ollama model:
 
 ```bash
-GET /api/providers
+export PMG_LLM_BASE_URL=http://localhost:11434/v1
+export PMG_LLM_MODEL=llama3.1:8b
 ```
 
-**Response:**
-```json
-{
-  "current_provider": "ollama",
-  "current_model": "gemma4:latest",
-  "providers": {
-    "ollama": {
-      "enabled": true,
-      "models": ["gemma4:latest", "llama3.1:8b"],
-      "config": {"base_url": "http://localhost:11434"}
-    }
-  }
-}
-```
+## Design notes
 
-### Switch Provider
+- **No services to run.** SQLite with the built-in FTS5 index is the only store; there is no Redis or vector database to operate.
+- **Bounded by construction.** The token budget and chunk limit cap what is injected per request, so cost does not grow with how much you have stored.
+- **Safe by default.** Secret patterns are blocked before storage; LLM output is validated and never trusted blindly; tuning suggestions are clamped to safe ranges.
+- **Known limits.** Retrieval is keyword-based, so a query for "canine" will not find a chunk about "dog". Semantic matching with a small embedding model is a natural next step.
 
-```bash
-POST /api/switch_provider
-Content-Type: application/json
-
-{
-  "provider": "openai",
-  "model": "gpt-4o"
-}
-```
-
-### Chat
-
-```bash
-POST /api/chat
-Content-Type: application/json
-
-{
-  "message": "Hello JARVIS!",
-  "session_id": "session_123",
-  "provider": "ollama",
-  "model": "gemma4:latest"
-}
-```
-
-**Response:** Streaming text content
-
-### Save Settings
-
-```bash
-POST /api/settings
-Content-Type: application/json
-
-{
-  "openai_key": "sk-...",
-  "temperature": 0.8,
-  "max_tokens": 400
-}
-```
-
-### Memory
-
-```bash
-GET /api/memory
-```
-
----
-
-## 🔧 Configuration
-
-### Generation Parameters
-
-```json
-{
-  "generation_params": {
-    "temperature": 0.7,
-    "max_tokens": 300,
-    "top_p": 0.9,
-    "num_ctx": 2048
-  }
-}
-```
-
-- **temperature**: Controls randomness (0.0 = deterministic, 1.0 = creative)
-- **max_tokens**: Maximum response length
-- **top_p**: Nucleus sampling threshold
-- **num_ctx**: Context window size (Ollama specific)
-
----
-
-## 🔒 Security
-
-- ✅ API keys stored in `config.json` (gitignored)
-- ✅ Settings panel for secure key management
-- ✅ No chat history storage (privacy-focused)
-- ✅ Local-first with Ollama option
-- ✅ Environment variable support
-
-**⚠️ Important:** Never commit `config.json` with real API keys to git!
-
----
-
-## 🐛 Troubleshooting
-
-### Provider Connection Failed
-
-- **Ollama**: Ensure `ollama serve` is running
-- **Cloud APIs**: Verify your API keys are valid
-- **Custom**: Check your endpoint is accessible
-
-### Model Not Available
-
-- Verify model name in config.json
-- For Ollama: Check `ollama list`
-- For cloud APIs: Ensure you have access to the model
-
-### Voice Input Not Working
-
-- Use Chrome or Edge for best Web Speech API support
-- Check microphone permissions
-- Ensure you're using HTTPS (or localhost)
-
-### Database Errors
-
-- Ensure `data/` directory exists
-- Check file permissions
-- Delete `data/jarvis.db*` to reset database
-
----
-
-## 📁 Project Structure
+## Project layout
 
 ```
-Jarvis/
-├── data/              # Database and ChromaDB storage
-│   ├── jarvis.db      # SQLite database
-│   └── chroma/        # Vector embeddings
-├── server.py          # FastAPI backend
-├── memory.py          # Memory management system
-├── model_providers.py # Multi-provider system
-├── config.json        # Your configuration (gitignored)
-├── config.example.json # Example configuration
-├── index.html         # Modern web interface
-├── requirements.txt   # Python dependencies
-├── start.bat          # Windows startup script
-├── .gitignore         # Git ignore rules
-└── README.md          # This file
+pmg_core.py            Memory store, classifier, retrieval and tuning (the layer itself)
+mcp_server.py          MCP server exposing the layer as tools
+proxy.py               OpenAI-compatible proxy for routers and frameworks
+rules.json             Editable rules: budget, kinds, weights, never-store patterns
+test_core.py           Unit tests for the core
+INTEGRATE.md           Step-by-step connection guide
+requirements-layer.txt Dependencies for the layer
+
+server.py, memory.py,  The original chat client (FastAPI + web UI) that this project
+model_providers.py,    grew from, kept as a reference implementation
+index.html, start.bat
 ```
 
----
+## The original chat client
 
-## 🤝 Contributing
+The repository began as a multi-provider chat app (Ollama, OpenAI, Anthropic, HuggingFace and custom
+endpoints) with a web interface, voice input and a keyword-triggered memory. It still works and is the
+prototype the layer was distilled from. See `config.example.json` and `start.bat` to run it. Note that it
+stores chat messages locally in SQLite.
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+## Contributing
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
-
----
-
-## 📄 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- [Ollama](https://ollama.com) for local model support
-- [FastAPI](https://fastapi.tiangolo.com) for the web framework
-- [Anthropic](https://www.anthropic.com) for Claude API
-- [OpenAI](https://openai.com) for GPT models
-- [HuggingFace](https://huggingface.co) for open-source models
+Issues and pull requests are welcome. Run `python test_core.py` before submitting.
 
 ---
 
 <div align="center">
 
-**Built with ❤️ by the JARVIS Team**
-
-[⬆ Back to Top](#-jarvis-ai-assistant)
+Built by [@sseraladen-svg](https://github.com/sseraladen-svg)
 
 </div>
