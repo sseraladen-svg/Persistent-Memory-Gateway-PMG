@@ -34,3 +34,9 @@ dump.rdb
 config.json
 config.local.json
 *.local.json
+
+# Packaging
+*.egg-info/
+build/
+dist/
+.venv/

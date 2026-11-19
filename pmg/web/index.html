@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PMG memory dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #eef1f5; --surface: #ffffff; --ink: #0e1726; --muted: #586274; --line: #d5dbe5;
+  --accent: #2430d8; --accent-ink: #ffffff; --danger: #b42318; --focus: #2430d8;
+  --k-behavior: #b4236b; --k-preference: #a15c00; --k-fact: #0b7a5b; --k-l: 42%;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0c1220; --surface: #131b2d; --ink: #e8edf7; --muted: #93a0b8; --line: #26324a;
+    --accent: #8a93ff; --accent-ink: #0c1220; --danger: #ff8a7a; --focus: #8a93ff;
+    --k-behavior: #f078b4; --k-preference: #f0b04a; --k-fact: #4cc9a0; --k-l: 68%;
+  }
+}
+* { box-sizing: border-box; }
+html { background: var(--bg); }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--sans); }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+.wrap { max-width: 880px; margin: 0 auto; padding: 0 16px 64px; }
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 24px; padding: 20px 0 0; }
+.brand { font-weight: 750; font-size: 20px; letter-spacing: -0.02em; margin: 0; }
+.brand span { font-weight: 400; color: var(--muted); font-size: 14px; letter-spacing: 0; margin-left: 10px; }
+nav { display: flex; gap: 4px; margin-left: auto; }
+nav button { background: none; border: 0; padding: 8px 12px; border-radius: 8px; color: var(--muted); cursor: pointer; }
+nav button:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+nav button[aria-current="page"] { color: var(--ink); font-weight: 650; box-shadow: inset 0 -2px 0 var(--accent); border-radius: 8px 8px 0 0; }
+
+.usage { margin: 16px 0 0; padding: 12px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  color: var(--muted); font-size: 14px; }
+.usage b { color: var(--ink); font-weight: 650; }
+
+h1 { font-size: 28px; line-height: 1.2; letter-spacing: -0.02em; margin: 36px 0 8px; font-weight: 700; }
+h2 { font-size: 17px; margin: 32px 0 8px; font-weight: 650; }
+.lede { color: var(--muted); max-width: 62ch; margin: 0 0 20px; }
+label { display: block; font-weight: 600; margin: 0 0 6px; }
+.hint { color: var(--muted); font-size: 13px; font-weight: 400; }
+
+textarea, input[type="text"], input[type="number"], input[type="search"], select {
+  width: 100%; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+textarea { resize: vertical; min-height: 76px; font-family: var(--serif); font-size: 17px; line-height: 1.45; }
+input[type="number"] { width: 110px; }
+.btn { background: var(--accent); color: var(--accent-ink); border: 1px solid transparent; border-radius: 8px;
+  padding: 9px 16px; font-weight: 600; cursor: pointer; }
+.btn:hover { filter: brightness(1.08); }
+.btn.quiet { background: transparent; color: var(--ink); border-color: var(--line); }
+.btn.quiet:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); filter: none; }
+.btn.danger { background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--line)); }
+.btn.small { padding: 4px 10px; font-size: 13px; }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 12px; }
+
+/* The token tape: the budget as a measured strip that fills with the chosen memories */
+.tape-block { margin: 28px 0 8px; }
+.tape { display: flex; height: 34px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line);
+  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--ink) 7%, transparent) 6px 7px), var(--surface); }
+.seg { height: 100%; flex: none; border-right: 2px solid var(--surface); transition: width .35s ease;
+  background: var(--seg); min-width: 3px; }
+.tape-caption { margin: 10px 0 0; font-size: 14px; color: var(--muted); }
+.tape-caption b { color: var(--ink); font-size: 22px; letter-spacing: -0.02em; font-weight: 700; margin-right: 2px; }
+
+ol.cards, ul.list { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 10px; }
+.card { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--kc);
+  border-radius: 4px 10px 10px 4px; padding: 12px 16px; }
+.card .text { font-family: var(--serif); font-size: 17px; line-height: 1.45; margin: 0; overflow-wrap: anywhere; }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 6px; font-size: 13px; color: var(--muted); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink); }
+.chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--kc); }
+.empty { color: var(--muted); border: 1px dashed var(--line); border-radius: 10px; padding: 20px; text-align: center; margin: 20px 0 0; }
+
+.toolbar { display: grid; grid-template-columns: 1fr 170px; gap: 10px; margin-bottom: 8px; }
+.addform { display: grid; grid-template-columns: 150px 1fr auto; gap: 10px; align-items: end; margin: 12px 0 24px;
+  padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+.addform label { margin-bottom: 4px; }
+.card .actions { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; }
+.fields input { width: 100%; }
+table { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 14px; }
+th { font-weight: 600; color: var(--muted); }
+tr:last-child td { border-bottom: 0; }
+details { margin-top: 28px; }
+summary { cursor: pointer; font-weight: 600; }
+details textarea { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; min-height: 260px; margin-top: 10px; }
+
+.status { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--ink); color: var(--bg);
+  padding: 10px 16px; border-radius: 8px; font-size: 14px; max-width: calc(100vw - 32px); }
+.status[hidden] { display: none; }
+.status.error { background: var(--danger); color: #fff; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+
+@media (max-width: 640px) {
+  nav { margin-left: -12px; width: 100%; }
+  .toolbar, .addform { grid-template-columns: 1fr; }
+  h1 { font-size: 24px; margin-top: 28px; }
+}
+@media (prefers-reduced-motion: reduce) { .seg { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="brand">PMG<span>Persistent Memory Gateway</span></p>
+    <nav aria-label="Sections">
+      <button data-view="playground">Playground</button>
+      <button data-view="memory">Memory</button>
+      <button data-view="rules">Rules</button>
+    </nav>
+  </header>
+  <p class="usage" id="usage" aria-live="polite">Loading…</p>
+
+  <main>
+    <section id="view-playground" hidden>
+      <h1>What gets loaded for a message</h1>
+      <p class="lede">Type something you might say to an assistant. The strip below is the token budget; each coloured block is a memory PMG would add to that request.</p>
+      <label for="msg">Message</label>
+      <textarea id="msg" placeholder="For example: What should I feed my dog tonight?"></textarea>
+      <div class="row">
+        <label for="budget" style="margin:0">Token budget</label>
+        <input id="budget" type="number" min="50" max="4000" inputmode="numeric">
+        <span class="hint">Leave as is to use the budget from your rules.</span>
+      </div>
+      <div class="tape-block" aria-live="polite">
+        <div class="tape" id="tape" role="img" aria-label="Token budget usage"></div>
+        <p class="tape-caption" id="tape-caption"></p>
+      </div>
+      <ol class="cards" id="picked"></ol>
+    </section>
+
+    <section id="view-memory" hidden>
+      <h1>Memory</h1>
+      <p class="lede">Everything PMG has kept. Standing instructions load on every request; the rest load only when a message matches.</p>
+      <form class="addform" id="addform">
+        <div><label for="add-kind">Kind</label><select id="add-kind"></select></div>
+        <div><label for="add-text">Something to remember</label><input type="text" id="add-text" maxlength="400" required placeholder="My dog is named Biscuit"></div>
+        <button class="btn" type="submit">Save memory</button>
+      </form>
+      <div class="toolbar">
+        <div><label class="sr" for="q">Search memories</label><input type="search" id="q" placeholder="Search memories"></div>
+        <div><label class="sr" for="kind-filter">Filter by kind</label><select id="kind-filter"><option value="">All kinds</option></select></div>
+      </div>
+      <ul class="list" id="chunks"></ul>
+    </section>
+
+    <section id="view-rules" hidden>
+      <h1>Rules</h1>
+      <p class="lede">These settings decide what is saved and how much is loaded. They are stored in a plain JSON file you can also edit by hand.</p>
+      <form id="rulesform">
+        <div class="fields">
+          <div><label for="r-budget">Token budget</label><input id="r-budget" type="number" min="50" max="4000"><span class="hint">Most memory loaded for one request.</span></div>
+          <div><label for="r-share">Reserved for instructions (%)</label><input id="r-share" type="number" min="0" max="90"><span class="hint">Share of the budget for standing instructions.</span></div>
+          <div><label for="r-chunks">Chunk limit</label><input id="r-chunks" type="number" min="1" max="30"><span class="hint">Most memories loaded for one request.</span></div>
+          <div><label for="r-min">Shortest memory (characters)</label><input id="r-min" type="number" min="2" max="20"><span class="hint">Shorter messages are ignored.</span></div>
+        </div>
+        <div class="row"><button class="btn" type="submit">Save settings</button></div>
+      </form>
+      <h2>Kinds of memory</h2>
+      <table id="kinds"><thead><tr><th>Kind</th><th>Loaded</th><th>Weight</th><th>Fades</th><th>Trigger phrases</th></tr></thead><tbody></tbody></table>
+      <p class="hint" id="secrets-note" style="margin-top:10px"></p>
+      <details>
+        <summary>Edit all rules as JSON</summary>
+        <label class="sr" for="rules-json">Rules JSON</label>
+        <textarea id="rules-json" spellcheck="false"></textarea>
+        <div class="row"><button class="btn quiet" id="save-json" type="button">Save JSON</button></div>
+      </details>
+    </section>
+  </main>
+</div>
+<div class="status" id="status" role="status" hidden></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const views = ["playground", "memory", "rules"];
+let rules = null, debounce = null;
+
+async function api(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: { "Content-Type": "application/json", "X-PMG-Request": "1" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Something went wrong.");
+  return data;
+}
+
+function say(message, isError = false) {
+  const el = $("#status");
+  el.textContent = message; el.className = "status" + (isError ? " error" : ""); el.hidden = false;
+  clearTimeout(say.t); say.t = setTimeout(() => (el.hidden = true), isError ? 6000 : 2500);
+}
+
+function h(tag, attrs = {}, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "style") el.style.cssText = v; else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) el.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) el.append(kid.nodeType ? kid : document.createTextNode(kid));
+  return el;
+}
+
+function kindColor(kind) {
+  if (["behavior", "preference", "fact"].includes(kind)) return `var(--k-${kind})`;
+  let n = 0; for (const c of kind) n = (n * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${n} 60% var(--k-l))`;
+}
+
+function ago(ts) {
+  const d = (Date.now() / 1000 - ts) / 86400;
+  if (d < 1 / 24) return "just now";
+  if (d < 1) return `${Math.round(d * 24)} hours ago`;
+  if (d < 30) return `${Math.round(d)} days ago`;
+  return new Date(ts * 1000).toLocaleDateString();
+}
+
+const plural = (n, one, many = one + "s") => `${n.toLocaleString()} ${n === 1 ? one : many}`;
+
+/* ---------- navigation ---------- */
+function show(view) {
+  if (!views.includes(view)) view = "playground";
+  for (const v of views) $("#view-" + v).hidden = v !== view;
+  document.querySelectorAll("nav button").forEach(b => b.dataset.view === view ? b.setAttribute("aria-current", "page") : b.removeAttribute("aria-current"));
+  if (location.hash !== "#" + view) history.replaceState(null, "", "#" + view);
+  ({ playground: runPlayground, memory: loadChunks, rules: renderRules })[view]();
+}
+document.querySelectorAll("nav button").forEach(b => b.addEventListener("click", () => show(b.dataset.view)));
+
+/* ---------- usage line ---------- */
+async function loadStats() {
+  const s = await api("GET", "/api/stats");
+  rules = s.rules;
+  const u = $("#usage"); u.textContent = "";
+  if (!s.chunks) { u.append("Nothing stored yet. Add a memory, or connect an assistant and ask it to remember something."); return s; }
+  u.append(h("b", {}, plural(s.chunks, "memory", "memories")), `, about ${s.stored_tokens.toLocaleString()} tokens in total. `);
+  if (s.saved_percent !== null) {
+    u.append(`Across the last ${plural(Math.min(s.requests, 200), "request")}, PMG loaded `, h("b", {}, `${s.avg_injected_tokens} tokens`),
+      " on average, which is ", h("b", {}, `${s.saved_percent}% less`), " than loading everything.");
+  } else u.append("No requests yet, so there are no savings to report.");
+  return s;
+}
+
+/* ---------- playground ---------- */
+async function runPlayground() {
+  if (!rules) await loadStats();
+  const budgetInput = $("#budget");
+  if (!budgetInput.value) budgetInput.placeholder = rules.budget_tokens;
+  const custom = parseInt(budgetInput.value, 10);
+  const r = await api("POST", "/api/retrieve", { query: $("#msg").value, budget: custom > 0 ? custom : null });
+  const tape = $("#tape"); tape.textContent = "";
+  for (const c of r.chunks) tape.append(h("span", { class: "seg", title: `${c.kind}: ${c.text}`, style: `width:${(c.tokens / r.budget) * 100}%;--seg:${kindColor(c.kind)}` }));
+  tape.setAttribute("aria-label", `${r.tokens} of ${r.budget} tokens used`);
+  const cap = $("#tape-caption"); cap.textContent = "";
+  cap.append(h("b", {}, r.tokens), ` of ${r.budget} tokens, from ${plural(r.chunks.length, "memory", "memories")}.`);
+  const list = $("#picked"); list.textContent = "";
+  if (!r.chunks.length) {
+    list.append(h("li", { class: "empty" }, $("#msg").value.trim()
+      ? "Nothing in memory matches this message, so no tokens would be added."
+      : "No standing instructions are stored. Type a message to see which memories match it."));
+  }
+  for (const c of r.chunks) {
+    list.append(h("li", { class: "card", style: `--kc:${kindColor(c.kind)}` },
+      h("p", { class: "text" }, c.text),
+      h("div", { class: "meta" }, h("span", { class: "chip" }, c.kind),
+        h("span", {}, c.why === "always" ? "Always loaded" : `Relevance ${Number(c.score).toFixed(1)}`),
+        h("span", {}, plural(c.tokens, "token")))));
+  }
+}
+$("#msg").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(runPlayground, 250); });
+$("#budget").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(runPlayground, 250); });
+
+/* ---------- memory ---------- */
+function fillKinds() {
+  const names = Object.keys(rules.kinds);
+  const add = $("#add-kind"), filter = $("#kind-filter"), keep = filter.value;
+  add.textContent = ""; names.forEach(n => add.append(h("option", { value: n }, n)));
+  add.value = names.includes("fact") ? "fact" : names[0];
+  filter.textContent = ""; filter.append(h("option", { value: "" }, "All kinds")); names.forEach(n => filter.append(h("option", { value: n }, n)));
+  filter.value = keep;
+}
+
+async function loadChunks() {
+  if (!rules) await loadStats();
+  if (!$("#add-kind").options.length) fillKinds();
+  const params = new URLSearchParams();
+  if ($("#q").value.trim()) params.set("q", $("#q").value.trim());
+  if ($("#kind-filter").value) params.set("kind", $("#kind-filter").value);
+  const { chunks } = await api("GET", "/api/chunks?" + params);
+  const list = $("#chunks"); list.textContent = "";
+  if (!chunks.length) {
+    list.append(h("li", { class: "empty" }, params.size ? "No memories match this search." : "No memories yet. Add one above, or ask a connected assistant to remember something."));
+    return;
+  }
+  for (const c of chunks) {
+    const actions = h("span", { class: "actions" });
+    const askDelete = () => {
+      actions.textContent = "";
+      actions.append(h("span", { class: "hint" }, "Delete this memory?"),
+        h("button", { class: "btn danger small", onclick: () => remove(c.id) }, "Delete"),
+        h("button", { class: "btn quiet small", onclick: () => { actions.textContent = ""; actions.append(deleteBtn); } }, "Keep"));
+    };
+    const deleteBtn = h("button", { class: "btn quiet small", onclick: askDelete, "aria-label": `Delete memory: ${c.text.slice(0, 40)}` }, "Delete");
+    actions.append(deleteBtn);
+    list.append(h("li", { class: "card", style: `--kc:${kindColor(c.kind)}` },
+      h("p", { class: "text" }, c.text),
+      h("div", { class: "meta" }, h("span", { class: "chip" }, c.kind),
+        h("span", {}, c.uses ? `Loaded ${plural(c.uses, "time")}` : "Never loaded"),
+        h("span", {}, `Updated ${ago(c.updated_at)}`), actions)));
+  }
+}
+async function remove(id) {
+  try { await api("DELETE", "/api/chunks/" + id); say("Memory deleted."); await loadStats(); await loadChunks(); }
+  catch (e) { say(e.message, true); }
+}
+$("#addform").addEventListener("submit", async e => {
+  e.preventDefault();
+  try {
+    await api("POST", "/api/chunks", { kind: $("#add-kind").value, text: $("#add-text").value });
+    $("#add-text").value = ""; say("Memory saved."); await loadStats(); await loadChunks();
+  } catch (err) { say(err.message, true); }
+});
+$("#q").addEventListener("input", () => { clearTimeout(debounce); debounce = setTimeout(loadChunks, 200); });
+$("#kind-filter").addEventListener("change", loadChunks);
+
+/* ---------- rules ---------- */
+async function renderRules() {
+  await loadStats();
+  $("#r-budget").value = rules.budget_tokens;
+  $("#r-share").value = Math.round(rules.always_load_share * 100);
+  $("#r-chunks").value = rules.max_chunks;
+  $("#r-min").value = rules.min_chars;
+  const body = $("#kinds tbody"); body.textContent = "";
+  for (const [name, k] of Object.entries(rules.kinds)) {
+    body.append(h("tr", { style: `--kc:${kindColor(name)}` },
+      h("td", {}, h("span", { class: "chip" }, name)),
+      h("td", {}, k.always_load ? "On every request" : "When relevant"),
+      h("td", {}, k.weight ?? 1),
+      h("td", {}, k.half_life_days ? `Half-life ${k.half_life_days} days` : "Never"),
+      h("td", {}, k.triggers.length)));
+  }
+  $("#secrets-note").textContent = `${plural(rules.never_store_patterns.length, "pattern")} block secrets such as keys, card numbers and passwords from being saved.`;
+  $("#rules-json").value = JSON.stringify(rules, null, 2);
+}
+async function saveRules(next) {
+  try { rules = await api("PUT", "/api/rules", next); say("Rules saved."); await renderRules(); fillKinds(); }
+  catch (e) { say(e.message, true); }
+}
+$("#rulesform").addEventListener("submit", e => {
+  e.preventDefault();
+  saveRules({ ...rules, budget_tokens: +$("#r-budget").value, always_load_share: +$("#r-share").value / 100,
+    max_chunks: +$("#r-chunks").value, min_chars: +$("#r-min").value });
+});
+$("#save-json").addEventListener("click", () => {
+  let parsed;
+  try { parsed = JSON.parse($("#rules-json").value); } catch { return say("That is not valid JSON.", true); }
+  saveRules(parsed);
+});
+
+/* ---------- start ---------- */
+loadStats().then(() => { fillKinds(); show(location.hash.slice(1)); }).catch(e => {
+  $("#usage").textContent = "Could not reach the PMG server. Is `pmg dashboard` still running?"; say(e.message, true);
+});
+window.addEventListener("hashchange", () => show(location.hash.slice(1)));
+</script>
+</body>
+</html>
