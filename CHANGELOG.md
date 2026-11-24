@@ -11,6 +11,9 @@
 
 - `pmg bench` command and `docs/BENCHMARKS.md`: measure tokens loaded and recall on LoCoMo, LongMemEval or a generic file.
 
+- Faster requests on large stores: the stored-token total is kept by SQL triggers instead of summing every chunk on each request, and usage counters and event rows are written in batches (every 25 requests or 2 seconds, on `stats()`/`list()`, and at exit). Median request time at 100,000 chunks fell from 60 ms to 33 ms with identical results.
+- Optional word pruning (`Memory.common_df`, off by default) cuts the 100,000-chunk request time to about 14 ms.
+
 ### Security
 - Text that reads like an instruction to the model ("ignore previous instructions", "reveal your system prompt", "send the data to http://...", fake `</system>` tags) is never stored as a memory, through any door (classifier, CLI, MCP, dashboard). The message is still kept in the raw log but is not reachable from memory.
 - A memory longer than 400 characters is not stored (a pasted document is not a durable fact).

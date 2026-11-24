@@ -1,0 +1,10 @@
+{
+ "pass": false,
+ "checks": {
+  "latency_le_50ms_at_100k": true,
+  "growth_le_3x_from_10k_to_100k": false,
+  "recall_within_0.01_of_baseline_at_every_N": true,
+  "tokens_within_budget_and_total_correct": true,
+  "no_events_lost": true
+ }
+}

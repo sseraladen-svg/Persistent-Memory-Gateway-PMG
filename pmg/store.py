@@ -1,11 +1,14 @@
 """The memory store: tiny chunks in SQLite, selected by full-text search inside a token budget."""
 from __future__ import annotations
 
+import atexit
 import contextlib
 import json
 import re
 import sqlite3
+import threading
 import time
+import weakref
 from pathlib import Path
 from typing import Optional
 
@@ -35,6 +38,18 @@ CREATE TABLE IF NOT EXISTS raw (
     ts REAL NOT NULL, source TEXT NOT NULL DEFAULT '', text TEXT NOT NULL, chunk_id INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_raw_chunk ON raw(chunk_id);
+-- A running total of stored tokens, kept by triggers so a request never has to scan every chunk.
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS chunks_tokens_ins AFTER INSERT ON chunks BEGIN
+    UPDATE meta SET value = value + (MAX(1, LENGTH(new.text) / 4) + 2) WHERE key = 'stored_tokens';
+END;
+CREATE TRIGGER IF NOT EXISTS chunks_tokens_del AFTER DELETE ON chunks BEGIN
+    UPDATE meta SET value = value - (MAX(1, LENGTH(old.text) / 4) + 2) WHERE key = 'stored_tokens';
+END;
+CREATE TRIGGER IF NOT EXISTS chunks_tokens_upd AFTER UPDATE OF text ON chunks BEGIN
+    UPDATE meta SET value = value + (MAX(1, LENGTH(new.text) / 4) + 2) - (MAX(1, LENGTH(old.text) / 4) + 2)
+    WHERE key = 'stored_tokens';
+END;
 """
 
 # Columns added after the first release. Older databases are upgraded in place.
@@ -47,6 +62,8 @@ MIGRATIONS = (
 # Word pruning is OFF by default. S2 tested 2000 (a query word found in more chunks than this is dropped): it cut
 # latency at 100k chunks from 41.7 to 14.9 ms with no recall loss, but missed the pre-registered growth rule
 # (3.4x from 10k to 100k, limit 3x), so it is not adopted until a follow-up passes. Set `Memory.common_df` to enable.
+FLUSH_EVENTS = 25     # buffered usage records are written after this many requests...
+FLUSH_SECONDS = 2.0   # ...or this long, whichever comes first
 COMMON_TERM_DF = 0
 _COMMON_RECHECK_S = 300  # how long a "not common" verdict is trusted
 
@@ -63,8 +80,18 @@ class Memory:
         self.ledger = Ledger()
         self.common_df = COMMON_TERM_DF  # 0 switches word pruning off
         self._common_cache: dict[str, tuple[bool, float]] = {}
+        self.defer_writes = True  # batch usage counters and event rows instead of committing on every request
+        self._lock = threading.Lock()
+        self._pending_uses: dict[int, int] = {}
+        self._pending_last_used: dict[int, float] = {}
+        self._pending_events: list[tuple] = []
+        self._pending_since: Optional[float] = None
+        ref = weakref.ref(self)
+        atexit.register(lambda: ref() and ref()._flush_quietly())
         with self._db() as c:
             c.executescript(SCHEMA)
+            if c.execute("SELECT 1 FROM meta WHERE key = 'stored_tokens'").fetchone() is None:
+                c.execute(f"INSERT INTO meta (key, value) SELECT 'stored_tokens', COALESCE(SUM({_COST}), 0) FROM chunks")
             for table, column, decl in MIGRATIONS:
                 if column not in {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}:
                     c.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
@@ -160,6 +187,7 @@ class Memory:
 
     # ------------------------------------------------------------------ reading
     def list(self, limit: int = 200, kind: Optional[str] = None, q: Optional[str] = None) -> list[dict]:
+        self.flush()
         sql, args = "SELECT id, kind, text, tags, key, importance, uses, created_at, updated_at FROM chunks", []
         where = []
         if kind:
@@ -230,17 +258,51 @@ class Memory:
                             picked.append({**r, "text": short, "score": round(score, 3), "tokens": gist_cost,
                                            "why": "match", "level": "gist"})
                             used += gist_cost
-            if picked:
-                ids = [p["id"] for p in picked]
+            ids = [p["id"] for p in picked]
+            if ids and not self.defer_writes:
                 c.execute(f"UPDATE chunks SET uses = uses + 1, last_used = ? WHERE id IN ({','.join('?' * len(ids))})",
                           [now, *ids])
+            stored = c.execute("SELECT value FROM meta WHERE key = 'stored_tokens'").fetchone()[0] if log else 0
             elapsed_ms = (time.perf_counter() - started) * 1000
             self.ledger.add("retrieve.total", elapsed_ms, tokens=used)
-            if log:
-                stored = c.execute(f"SELECT COALESCE(SUM({_COST}), 0) FROM chunks").fetchone()[0]
+            if log and not self.defer_writes:
                 c.execute("INSERT INTO events (ts, injected_tokens, chunks, stored_tokens, ms) VALUES (?,?,?,?,?)",
                           (now, used, len(picked), stored, elapsed_ms))
+        if self.defer_writes and (ids or log):
+            self._buffer_usage(ids, now, (now, used, len(picked), stored, elapsed_ms) if log else None)
         return {"chunks": picked, "tokens": used, "budget": budget, "text": format_chunks(picked)}
+
+    def _buffer_usage(self, ids: list[int], now: float, event: Optional[tuple]) -> None:
+        """Remember usage counters and the event row, and write them in a batch instead of one commit per request."""
+        with self._lock:
+            for i in ids:
+                self._pending_uses[i] = self._pending_uses.get(i, 0) + 1
+                self._pending_last_used[i] = now
+            if event:
+                self._pending_events.append(event)
+            if self._pending_since is None:
+                self._pending_since = now
+            due = len(self._pending_events) >= FLUSH_EVENTS or now - self._pending_since >= FLUSH_SECONDS
+        if due:
+            self.flush()
+
+    def flush(self) -> None:
+        """Write buffered usage counters and events now."""
+        with self._lock:
+            uses, last, events = self._pending_uses, self._pending_last_used, self._pending_events
+            self._pending_uses, self._pending_last_used, self._pending_events, self._pending_since = {}, {}, [], None
+        if not uses and not events:
+            return
+        with self._db() as c:
+            c.executemany("UPDATE chunks SET uses = uses + ?, last_used = ? WHERE id = ?",
+                          [(n, last[i], i) for i, n in uses.items()])
+            c.executemany("INSERT INTO events (ts, injected_tokens, chunks, stored_tokens, ms) VALUES (?,?,?,?,?)", events)
+
+    def _flush_quietly(self) -> None:
+        try:
+            self.flush()
+        except Exception:  # the data directory may be gone at exit; these are statistics only
+            pass
 
     def candidates(self, query: str, limit: int = 50) -> list[tuple[int, str, float]]:
         """Plain keyword matches for a query, best first: (chunk id, text, BM25 score). No budget, no rules."""
@@ -272,6 +334,7 @@ class Memory:
 
     def stats(self) -> dict:
         """Counts, stored size, and how much smaller the injected memory is than loading everything."""
+        self.flush()
         with self._db() as c:
             total = c.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
             stored = c.execute(f"SELECT COALESCE(SUM({_COST}), 0) FROM chunks").fetchone()[0]

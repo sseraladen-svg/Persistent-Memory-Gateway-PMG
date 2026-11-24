@@ -1,0 +1,35 @@
+{
+ "1000": {
+  "median_ms": 1.676945499994531,
+  "p95_ms": 3.600597000001926,
+  "macro_recall": 0.7425925925925926,
+  "mean_tokens": 125.37333333333333,
+  "max_tokens": 139,
+  "budget": 400,
+  "events": 320,
+  "requests": 320,
+  "total_correct": true
+ },
+ "10000": {
+  "median_ms": 3.1419735000071114,
+  "p95_ms": 6.265476999999464,
+  "macro_recall": 0.7516339869281046,
+  "mean_tokens": 129.09,
+  "max_tokens": 148,
+  "budget": 400,
+  "events": 320,
+  "requests": 320,
+  "total_correct": true
+ },
+ "100000": {
+  "median_ms": 13.946853500002021,
+  "p95_ms": 19.396292999999787,
+  "macro_recall": 0.7355555555555555,
+  "mean_tokens": 136.26333333333332,
+  "max_tokens": 162,
+  "budget": 400,
+  "events": 320,
+  "requests": 320,
+  "total_correct": true
+ }
+}
