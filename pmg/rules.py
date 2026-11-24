@@ -59,7 +59,7 @@ def save(rules: dict) -> None:
     problems = validate(rules)
     if problems:
         raise ValueError("; ".join(problems))
-    config.rules_path().write_text(json.dumps(rules, indent=2) + "\n", encoding="utf-8")
+    config.write_atomic(config.rules_path(), json.dumps(rules, indent=2) + "\n")
 
 
 def apply_numeric(changes: dict) -> dict:

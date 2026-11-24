@@ -48,7 +48,7 @@ def build_server(memory: Optional[Memory] = None, complete: Optional[Completer] 
             cid = memory.add(kind, text)
         else:
             cid = memory.ingest(text, complete)
-        return f"stored #{cid}" if cid else "not stored (nothing durable, or it looked like a secret)"
+        return f"stored #{cid}" if cid else "not stored (nothing durable, or it looked like a secret or an instruction aimed at the model)"
 
     @server.tool()
     def memory_expand(chunk_id: int) -> str:

@@ -75,13 +75,19 @@ class Memory:
 
     # ------------------------------------------------------------------ writing
     def add(self, kind: str, text: str, tags: str = "", importance: int = 3, key: Optional[str] = None,
-            raw_id: Optional[int] = None) -> int:
-        """Store one chunk. Exact duplicates merge; a repeated `key` replaces the older value."""
+            raw_id: Optional[int] = None) -> Optional[int]:
+        """Store one chunk. Exact duplicates merge; a repeated `key` replaces the older value.
+
+        Returns None, storing nothing, for secrets, text that reads like an instruction to the model, or text that
+        is too long to be a note. This guard applies to every way in (CLI, MCP, dashboard, proxy)."""
         text = text.strip()
+        if classify.unsafe_reason(text, rules_mod.load()):
+            return None
         now, norm = time.time(), normalize(text)
         tags = tags or " ".join(unique_keywords(text, 6))
         gist = make_gist(text)
         with self._db() as c:
+            c.execute("BEGIN IMMEDIATE")  # take the write lock first, so the check-then-insert below cannot race
             row = c.execute("SELECT id FROM chunks WHERE norm = ?", (norm,)).fetchone()
             if row:
                 c.execute("UPDATE chunks SET updated_at = ? WHERE id = ?", (now, row["id"]))
@@ -273,9 +279,10 @@ def format_chunks(chunks: list[dict]) -> str:
         return ""
     behavior = [c["text"] for c in chunks if c["kind"] == "behavior"]
     rest = [c["text"] for c in chunks if c["kind"] != "behavior"]
+    one_line = lambda t: " ".join(t.split())  # a note can never start a new line, so it cannot forge a section
     parts = []
     if behavior:
-        parts.append("Follow:\n" + "\n".join(f"- {t}" for t in behavior))
+        parts.append("Follow:\n" + "\n".join(f"- {one_line(t)}" for t in behavior))
     if rest:
-        parts.append("Known about the user:\n" + "\n".join(f"- {t}" for t in rest))
+        parts.append("Known about the user:\n" + "\n".join(f"- {one_line(t)}" for t in rest))
     return "\n".join(parts)

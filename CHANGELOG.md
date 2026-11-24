@@ -9,6 +9,16 @@
 - Cost ledger: retrieval time and tokens are recorded per request; the dashboard shows the median time and how many original messages are kept.
 - Older databases are upgraded in place when opened.
 
+### Security
+- Text that reads like an instruction to the model ("ignore previous instructions", "reveal your system prompt", "send the data to http://...", fake `</system>` tags) is never stored as a memory, through any door (classifier, CLI, MCP, dashboard). The message is still kept in the raw log but is not reachable from memory.
+- A memory longer than 400 characters is not stored (a pasted document is not a durable fact).
+- Secrets are now refused by every door, including `memory_remember` with an explicit kind.
+- Memory text is rendered on a single line, so a newline cannot forge a new "Follow:" section.
+
+### Fixed
+- Concurrent writers could crash with a unique-constraint error when replacing the same fact or storing the same text; writes now take the lock first.
+- The rules file is created and saved atomically, so a reader never sees a half-written file.
+
 ### Changed
 - `forget` now also deletes the raw messages linked to that chunk.
 

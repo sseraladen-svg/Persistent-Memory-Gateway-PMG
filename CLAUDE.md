@@ -48,14 +48,15 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (55 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
-- `experiments/e1_topology_router/` and `experiments/e2_fingerprint_cascade/`: PROTOCOL.md, engine.py, run.py,
+- `tests/`: unit and interface tests (70 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
 ## Commands
 
 - Tests: `python3 -m unittest discover -s tests`
 - E1 full run: `python3 experiments/e1_topology_router/run.py --sensitivity 1500` (about 1 minute)
+- S1 scale run: `python3 experiments/s1_scale/run.py` (about 20 seconds)
 - E2 full run: `python3 experiments/e2_fingerprint_cascade/run.py` (about 45 seconds; numpy is available)
 - The cloud workspace has **no network for pip/npm**; use the standard library only. Heavy runs (real embeddings,
   benchmarks) must run on the user's machine.
@@ -95,6 +96,12 @@ needs. 4. Ingestion: what to add for output quality.
 - Layer 1 storage done: append-only raw log (`raw` table, every non-secret message kept verbatim, linked to chunks),
   gists as a fallback when a chunk does not fit the budget, `memory_expand` tool, in-place DB upgrade, retrieval time
   in the dashboard. `forget` also deletes the linked raw messages (user-deletable).
+- Safety (tests in `tests/test_safety.py`): instruction-hijack text and secrets are refused by every door
+  (`classify.unsafe_reason`, patterns live in code, not the editable rules); memories over 400 chars are refused;
+  rendering is one line per memory. Residual risk: a poisoned model could still store a harmless-looking but false
+  fact or a polite standing instruction via `memory_remember`; the dashboard lets the user review and delete.
+- Concurrency (tests in `tests/test_concurrency.py`): writers take the lock first (`BEGIN IMMEDIATE`); rules file is
+  written atomically. Threads and separate processes tested.
 - Not yet measured: waste = tokens loaded but never used (needs feedback on what the model actually used).
 - Known weakness: keyword (FTS5) retrieval finds paraphrases poorly (hit@3 = 17% on a small test). Embeddings and
   hybrid retrieval are needed.
@@ -104,10 +111,12 @@ needs. 4. Ingestion: what to add for output quality.
 | ID | Question | Result |
 |---|---|---|
 | E1 | Does topology (H0/MST) routing cut tokens vs score-only routers at equal recall? | FAIL. At R=0.90: P0 599 tok / 0.891, P1b 298 / 0.883, P2 387 / 0.891. Tuned gap was 0.6 so clusters did nothing; relative cutoff is the useful part. |
+| S1 | Does retrieval cost stay flat as the store grows (real `Memory.retrieve`, FTS5)? | FAIL. Median 4.0 / 5.6 / 34.2 ms and p95 5.4 / 10.6 / 72.4 ms at 1k / 10k / 100k chunks. Tokens injected stayed flat (about 125-139, max 168 of 400). About 63% of the time is the FTS5 query (OR over all query words, so common words scan long lists), the rest is ranking and the usage-counter write on every retrieval. Candidate fixes (separate registered experiment): drop very common terms from the query, move the usage write off the hot path. |
 | E2 | Does a SimHash fingerprint cascade match exact dense retrieval with far less compute? | FAIL at N=50k: overlap@10 0.51 and recall -0.128 vs exact with the best grid point (256 bits, shortlist 320; 3.8% of bytes, 2.6x faster). Reaching 0.95 overlap needed a shortlist of about 10,000 (23% of bytes) and was no faster than exact. Vectors are random-projected TF-IDF, not real embeddings. |
 
 ## Next steps
 
+0. S2 (new, here): fix retrieval latency at 100k (prune high-frequency terms, defer the `uses` write) and rerun S1.
 1. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
 2. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
    Also open: a sublinear first stage (buckets or a graph) for goals 2 and 14, tested on real embeddings.

@@ -1,0 +1,40 @@
+{
+ "sizes": {
+  "1000": {
+   "median_ms": 3.980671499988375,
+   "p95_ms": 5.4355489999977635,
+   "max_tokens": 148,
+   "mean_tokens": 125.03666666666666,
+   "mean_chunks": 6,
+   "load_seconds": 0.14678832300000977,
+   "db_mb": 0.663552,
+   "budget": 400
+  },
+  "10000": {
+   "median_ms": 5.600565999998253,
+   "p95_ms": 10.615032999993446,
+   "max_tokens": 150,
+   "mean_tokens": 129.10333333333332,
+   "mean_chunks": 6,
+   "load_seconds": 0.5542865790000064,
+   "db_mb": 5.885952,
+   "budget": 400
+  },
+  "100000": {
+   "median_ms": 34.22163699997327,
+   "p95_ms": 72.42305700003726,
+   "max_tokens": 168,
+   "mean_tokens": 138.76,
+   "mean_chunks": 6,
+   "load_seconds": 4.377555166999997,
+   "db_mb": 61.124608,
+   "budget": 400
+  }
+ },
+ "checks": {
+  "latency_le_50ms_at_100k": false,
+  "growth_le_3x_from_10k_to_100k": false,
+  "tokens_within_budget": true
+ },
+ "pass": false
+}

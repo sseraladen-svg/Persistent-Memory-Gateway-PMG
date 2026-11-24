@@ -74,9 +74,10 @@ def make_server(memory: Memory, host: str = "127.0.0.1", port: int = 8787) -> Th
                     return self._json(400, {"error": f"Kind must be one of: {', '.join(rules['kinds'])}."})
                 if not 3 <= len(text) <= 400:
                     return self._json(400, {"error": "Text must be between 3 and 400 characters."})
-                from .classify import contains_secret
-                if contains_secret(text, rules):
-                    return self._json(400, {"error": "That looks like a secret, so it was not saved."})
+                from .classify import unsafe_reason
+                why = unsafe_reason(text, rules)
+                if why:
+                    return self._json(400, {"error": f"Not saved: {why}."})
                 return self._json(201, {"id": memory.add(kind, text)})
             m = re.fullmatch(r"/api/chunks/(\d+)", path)
             if method == "DELETE" and m:

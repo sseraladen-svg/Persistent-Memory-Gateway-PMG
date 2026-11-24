@@ -25,7 +25,7 @@ def cmd_add(args):
         cid = memory.add(args.kind, " ".join(args.text))
     else:
         cid = memory.ingest(" ".join(args.text), from_env())
-    print(f"Stored as #{cid}." if cid else "Not stored: nothing durable found, or it looked like a secret. "
+    print(f"Stored as #{cid}." if cid else "Not stored: nothing durable found, or it looked like a secret or an instruction aimed at the model. "
           "Use --kind to store it as-is.")
     return 0 if cid else 1
 
