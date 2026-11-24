@@ -48,13 +48,15 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (41 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
-- `experiments/e1_topology_router/`: PROTOCOL.md, gym.py, engine.py, run.py, diagnose.py, RESULTS.md, DIAGNOSTICS.md.
+- `tests/`: unit and interface tests (45 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `experiments/e1_topology_router/` and `experiments/e2_fingerprint_cascade/`: PROTOCOL.md, engine.py, run.py,
+  diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
 ## Commands
 
 - Tests: `python3 -m unittest discover -s tests`
 - E1 full run: `python3 experiments/e1_topology_router/run.py --sensitivity 1500` (about 1 minute)
+- E2 full run: `python3 experiments/e2_fingerprint_cascade/run.py` (about 45 seconds; numpy is available)
 - The cloud workspace has **no network for pip/npm**; use the standard library only. Heavy runs (real embeddings,
   benchmarks) must run on the user's machine.
 
@@ -79,15 +81,17 @@ needs. 4. Ingestion: what to add for output quality.
 
 - Keep: relative score cutoff (P1b) instead of fixed top-k (about 50% fewer tokens at similar recall on the
   synthetic gym; needs confirming on real data).
-- Planned: three-level lossless storage; multi-resolution chunks (binary fingerprint + full embedding); cheap-first
-  cascade with early exit; information-per-token packing; cheap-first ADD/UPDATE/DELETE/NOOP ingestion;
+- Planned: three-level lossless storage; an append-only raw log with chunk byte offsets (idea kept from the user's
+  MicroTQ sketch, which has no question-to-ID step and so does not solve retrieval); cheap-first ingestion;
+  information-per-token packing; information-per-token packing; cheap-first ADD/UPDATE/DELETE/NOOP ingestion;
   waste-driven learning loop (waste = tokens loaded but never used); memory is data, not instructions.
-- Dropped: topology-aware routing (E1 failed). Inspirations from neuromorphic photonics (event-driven sparsity ->
-  cascade) and DNA (binary similarity fingerprints) are untested ideas, not commitments.
+- Dropped: topology-aware routing (E1 failed); flat SimHash fingerprint scan + rerank as the first stage (E2 failed:
+  at N=50k it needed about 20% of the store as shortlist to reach 0.95 overlap and was no faster than exact search).
+  A sublinear index (buckets or a graph) is still open and would be a new, separately registered experiment.
 
 ## Status
 
-- Done and pushed to main: package restructure, MCP server, proxy, dashboard, CLI, docs, CI, cost ledger, E1.
+- Done and pushed to main: package restructure, MCP server, proxy, dashboard, CLI, docs, CI, cost ledger, E1, E2.
 - Known weakness: keyword (FTS5) retrieval finds paraphrases poorly (hit@3 = 17% on a small test). Embeddings and
   hybrid retrieval are needed.
 
@@ -96,13 +100,14 @@ needs. 4. Ingestion: what to add for output quality.
 | ID | Question | Result |
 |---|---|---|
 | E1 | Does topology (H0/MST) routing cut tokens vs score-only routers at equal recall? | FAIL. At R=0.90: P0 599 tok / 0.891, P1b 298 / 0.883, P2 387 / 0.891. Tuned gap was 0.6 so clusters did nothing; relative cutoff is the useful part. |
+| E2 | Does a SimHash fingerprint cascade match exact dense retrieval with far less compute? | FAIL at N=50k: overlap@10 0.51 and recall -0.128 vs exact with the best grid point (256 bits, shortlist 320; 3.8% of bytes, 2.6x faster). Reaching 0.95 overlap needed a shortlist of about 10,000 (23% of bytes) and was no faster than exact. Vectors are random-projected TF-IDF, not real embeddings. |
 
 ## Next steps
 
-1. E2: does a cheap binary-fingerprint cascade match full-embedding recall with less compute? (write protocol first)
-2. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
-3. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
-4. Layer 1 three-level storage; integrate the cost ledger into the server and dashboard; hybrid retrieval.
+1. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
+2. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
+   Also open: a sublinear first stage (buckets or a graph) for goals 2 and 14, tested on real embeddings.
+3. Layer 1 three-level storage; integrate the cost ledger into the server and dashboard; hybrid retrieval.
 
 ## How to work with this user
 

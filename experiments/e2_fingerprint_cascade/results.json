@@ -1,0 +1,82 @@
+{
+ "sizes": {
+  "2000": {
+   "chosen": {
+    "bits": 256,
+    "shortlist": 320,
+    "val_overlap": 0.8756666666666667,
+    "bytes": 391680,
+    "met_validation_target": false
+   },
+   "overlap_at_10": 0.8528888888888889,
+   "macro_recall_cascade": 0.7549978953500343,
+   "macro_recall_exact": 0.7642817074715451,
+   "recall_diff": -0.00928381212151086,
+   "recall_diff_ci95": [
+    -0.01711290155088861,
+    -0.001943389264930978
+   ],
+   "bytes_cascade": 391680,
+   "bytes_exact": 2048000,
+   "bytes_ratio": 0.19125,
+   "latency_ms_cascade_median": 0.09374550000000001,
+   "latency_ms_exact_median": 0.0900055,
+   "latency_ratio": 1.0415530162045654
+  },
+  "10000": {
+   "chosen": {
+    "bits": 256,
+    "shortlist": 320,
+    "val_overlap": 0.6721666666666667,
+    "bytes": 647680,
+    "met_validation_target": false
+   },
+   "overlap_at_10": 0.6737777777777778,
+   "macro_recall_cascade": 0.6969005089791607,
+   "macro_recall_exact": 0.7572956880822049,
+   "recall_diff": -0.06039517910304426,
+   "recall_diff_ci95": [
+    -0.07307255711905669,
+    -0.04871959645263135
+   ],
+   "bytes_cascade": 647680,
+   "bytes_exact": 10240000,
+   "bytes_ratio": 0.06325,
+   "latency_ms_cascade_median": 0.273115,
+   "latency_ms_exact_median": 0.55013,
+   "latency_ratio": 0.49645538327304456
+  },
+  "50000": {
+   "chosen": {
+    "bits": 256,
+    "shortlist": 320,
+    "val_overlap": 0.5038333333333334,
+    "bytes": 1927680,
+    "met_validation_target": false
+   },
+   "overlap_at_10": 0.5121111111111111,
+   "macro_recall_cascade": 0.6160486016612718,
+   "macro_recall_exact": 0.7437896408388212,
+   "recall_diff": -0.1277410391775493,
+   "recall_diff_ci95": [
+    -0.14596581090393174,
+    -0.11060269929142333
+   ],
+   "bytes_cascade": 1927680,
+   "bytes_exact": 51200000,
+   "bytes_ratio": 0.03765,
+   "latency_ms_cascade_median": 1.1875355,
+   "latency_ms_exact_median": 3.0812749999999998,
+   "latency_ratio": 0.3854039318139407
+  }
+ },
+ "verdict": {
+  "pass": false,
+  "checks": {
+   "overlap_ge_0.95": false,
+   "recall_within_0.01": false,
+   "bytes_le_25pct": true,
+   "latency_le_50pct": true
+  }
+ }
+}
