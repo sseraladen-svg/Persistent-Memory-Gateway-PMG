@@ -1,0 +1,68 @@
+{
+ "sizes": {
+  "1000": {
+   "off": {
+    "median_ms": 2.4400765000223146,
+    "p95_ms": 3.356131000032292,
+    "macro_recall": 0.7347670250896057,
+    "mean_tokens": 125.03,
+    "max_tokens": 146,
+    "mean_tokens_vague": 123.28571428571429
+   },
+   "on": {
+    "median_ms": 2.8075310000019726,
+    "p95_ms": 3.7127000000509724,
+    "macro_recall": 0.7347670250896057,
+    "mean_tokens": 125.03,
+    "max_tokens": 146,
+    "mean_tokens_vague": 123.28571428571429
+   },
+   "budget": 400
+  },
+  "10000": {
+   "off": {
+    "median_ms": 5.332735500019226,
+    "p95_ms": 9.247426000001724,
+    "macro_recall": 0.7609427609427609,
+    "mean_tokens": 129.53333333333333,
+    "max_tokens": 154,
+    "mean_tokens_vague": 126.41935483870968
+   },
+   "on": {
+    "median_ms": 4.41911250004523,
+    "p95_ms": 7.118780000041625,
+    "macro_recall": 0.7626262626262627,
+    "mean_tokens": 129.57333333333332,
+    "max_tokens": 154,
+    "mean_tokens_vague": 125.96774193548387
+   },
+   "budget": 400
+  },
+  "100000": {
+   "off": {
+    "median_ms": 41.73560250001174,
+    "p95_ms": 92.66125900001043,
+    "macro_recall": 0.737037037037037,
+    "mean_tokens": 138.50333333333333,
+    "max_tokens": 164,
+    "mean_tokens_vague": 134.31034482758622
+   },
+   "on": {
+    "median_ms": 14.930771499962248,
+    "p95_ms": 22.509509999963484,
+    "macro_recall": 0.737037037037037,
+    "mean_tokens": 137.29,
+    "max_tokens": 167,
+    "mean_tokens_vague": 127.13793103448276
+   },
+   "budget": 400
+  }
+ },
+ "checks": {
+  "latency_le_50ms_at_100k": true,
+  "growth_le_3x_from_10k_to_100k": false,
+  "recall_within_0.01_at_every_N": true,
+  "tokens_within_budget": true
+ },
+ "pass": false
+}

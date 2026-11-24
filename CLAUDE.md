@@ -48,8 +48,8 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (70 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
-- `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`: PROTOCOL.md, engine.py, run.py,
+- `tests/`: unit and interface tests (74 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
 ## Commands
@@ -112,11 +112,12 @@ needs. 4. Ingestion: what to add for output quality.
 |---|---|---|
 | E1 | Does topology (H0/MST) routing cut tokens vs score-only routers at equal recall? | FAIL. At R=0.90: P0 599 tok / 0.891, P1b 298 / 0.883, P2 387 / 0.891. Tuned gap was 0.6 so clusters did nothing; relative cutoff is the useful part. |
 | S1 | Does retrieval cost stay flat as the store grows (real `Memory.retrieve`, FTS5)? | FAIL. Median 4.0 / 5.6 / 34.2 ms and p95 5.4 / 10.6 / 72.4 ms at 1k / 10k / 100k chunks. Tokens injected stayed flat (about 125-139, max 168 of 400). About 63% of the time is the FTS5 query (OR over all query words, so common words scan long lists), the rest is ranking and the usage-counter write on every retrieval. Candidate fixes (separate registered experiment): drop very common terms from the query, move the usage write off the hot path. |
+| S2 | Does dropping query words found in >2000 chunks keep latency flat at 100k without losing details? | FAIL on the growth rule only: median 2.8 / 4.4 / 14.9 ms (1k / 10k / 100k) with pruning vs 2.4 / 5.3 / 41.7 off; p95 at 100k 22.5 vs 92.7 ms; recall identical (0.737 vs 0.737); growth 10k->100k 3.4x (limit 3x). Per the pre-set rule it is NOT adopted: `Memory.common_df` stays 0 (opt-in). The remaining 15 ms at 100k is the FTS query on rare words, ranking and the usage write. |
 | E2 | Does a SimHash fingerprint cascade match exact dense retrieval with far less compute? | FAIL at N=50k: overlap@10 0.51 and recall -0.128 vs exact with the best grid point (256 bits, shortlist 320; 3.8% of bytes, 2.6x faster). Reaching 0.95 overlap needed a shortlist of about 10,000 (23% of bytes) and was no faster than exact. Vectors are random-projected TF-IDF, not real embeddings. |
 
 ## Next steps
 
-0. S2 (new, here): fix retrieval latency at 100k (prune high-frequency terms, defer the `uses` write) and rerun S1.
+0. S3 (here): latency at 100k. S2 showed pruning helps (2.8x) but misses the 3x growth rule; test pruning plus moving the `uses` write off the hot path, with a new pre-registered rule.
 1. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
 2. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
    Also open: a sublinear first stage (buckets or a graph) for goals 2 and 14, tested on real embeddings.

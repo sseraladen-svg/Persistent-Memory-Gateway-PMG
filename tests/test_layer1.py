@@ -92,3 +92,33 @@ class UpgradeAndLedgerTests(IsolatedTestCase):
         self.assertEqual(summary["retrieve.total"]["tokens"], result["tokens"])
         self.assertIn("retrieve.search", summary)
         self.assertIsNotNone(m.stats()["median_ms"])
+
+
+class CommonWordPruningTests(IsolatedTestCase):
+    def make(self):
+        m = Memory()
+        m.common_df = 20
+        for i in range(60):
+            m.add("fact", f"project note {i} about budget item number{i}")
+        m.add("fact", "the zebra migration project is owned by Priya")
+        return m
+
+    def test_a_very_common_word_is_dropped_but_a_rare_word_still_finds_its_chunk(self):
+        m = self.make()
+        result = m.retrieve("project zebra", log=False)
+        self.assertEqual([c["text"] for c in result["chunks"]], ["the zebra migration project is owned by Priya"])
+
+    def test_a_query_of_only_common_words_returns_nothing_from_search(self):
+        m = self.make()
+        self.assertEqual(m.retrieve("project note budget", log=False)["chunks"], [])
+
+    def test_switching_it_off_restores_plain_search(self):
+        m = self.make()
+        m.common_df = 0
+        self.assertGreater(len(m.retrieve("project note budget", log=False)["chunks"]), 0)
+
+    def test_small_stores_are_never_pruned_by_default(self):
+        m = Memory()
+        for i in range(30):
+            m.add("fact", f"project note {i} about budget item number{i}")
+        self.assertGreater(len(m.retrieve("project", log=False)["chunks"]), 0)

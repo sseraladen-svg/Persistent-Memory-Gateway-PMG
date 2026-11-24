@@ -44,6 +44,12 @@ MIGRATIONS = (
     ("events", "ms", "REAL NOT NULL DEFAULT 0"),  # time spent choosing chunks
 )
 
+# Word pruning is OFF by default. S2 tested 2000 (a query word found in more chunks than this is dropped): it cut
+# latency at 100k chunks from 41.7 to 14.9 ms with no recall loss, but missed the pre-registered growth rule
+# (3.4x from 10k to 100k, limit 3x), so it is not adopted until a follow-up passes. Set `Memory.common_df` to enable.
+COMMON_TERM_DF = 0
+_COMMON_RECHECK_S = 300  # how long a "not common" verdict is trusted
+
 _COST = "(MAX(1, LENGTH(text) / 4) + 2)"  # mirrors est_tokens(text) + 2 (per-line overhead)
 
 
@@ -55,6 +61,8 @@ class Memory:
     def __init__(self, db_path: Optional[Path | str] = None):
         self.db_path = str(db_path or config.db_path())
         self.ledger = Ledger()
+        self.common_df = COMMON_TERM_DF  # 0 switches word pruning off
+        self._common_cache: dict[str, tuple[bool, float]] = {}
         with self._db() as c:
             c.executescript(SCHEMA)
             for table, column, decl in MIGRATIONS:
@@ -186,6 +194,10 @@ class Memory:
                     if used + cost <= always_cap and len(picked) < max_chunks:
                         picked.append({**dict(r), "score": None, "tokens": cost, "why": "always"}); used += cost
             words = unique_keywords(query)
+            if words and self.common_df:
+                with self.ledger.stage("retrieve.prune") as st:
+                    words = self._drop_common_words(c, words)
+                    st["ops"] = len(words)
             if words:
                 match = " OR ".join(f'"{w}"' for w in words)
                 have = {p["id"] for p in picked}
@@ -229,6 +241,22 @@ class Memory:
                 c.execute("INSERT INTO events (ts, injected_tokens, chunks, stored_tokens, ms) VALUES (?,?,?,?,?)",
                           (now, used, len(picked), stored, elapsed_ms))
         return {"chunks": picked, "tokens": used, "budget": budget, "text": format_chunks(picked)}
+
+    def _drop_common_words(self, c, words: list[str]) -> list[str]:
+        """Keep only words that help find something. A word in more than `common_df` chunks is dropped.
+
+        The count stops at common_df + 1, so checking costs about the same however large the store is."""
+        now, kept = time.time(), []
+        for w in words:
+            hit = self._common_cache.get(w)
+            if hit is None or (not hit[0] and now - hit[1] > _COMMON_RECHECK_S):
+                n = c.execute("SELECT COUNT(*) FROM (SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? LIMIT ?)",
+                              (f'"{w}"', self.common_df + 1)).fetchone()[0]
+                hit = (n > self.common_df, now)
+                self._common_cache[w] = hit
+            if not hit[0]:
+                kept.append(w)
+        return kept
 
     def stats(self) -> dict:
         """Counts, stored size, and how much smaller the injected memory is than loading everything."""
