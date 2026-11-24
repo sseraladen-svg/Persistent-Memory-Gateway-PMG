@@ -14,7 +14,8 @@ from .store import Memory
 INSTRUCTIONS = (
     "Persistent memory layer. At the start of each user turn, call memory_retrieve with the user's message "
     "and follow what it returns. When the user shares a durable fact, preference or instruction, call "
-    "memory_remember. Do not call these for one-off questions that need no personal context."
+    "memory_remember. If a memory ends with (#n short), it is a shortened form: call memory_expand(n) when you "
+    "need the full detail. Do not call these for one-off questions that need no personal context."
 )
 
 
@@ -48,6 +49,12 @@ def build_server(memory: Optional[Memory] = None, complete: Optional[Completer] 
         else:
             cid = memory.ingest(text, complete)
         return f"stored #{cid}" if cid else "not stored (nothing durable, or it looked like a secret)"
+
+    @server.tool()
+    def memory_expand(chunk_id: int) -> str:
+        """Return the full stored text of a chunk and the original messages it came from (nothing is shortened)."""
+        found = memory.expand(chunk_id)
+        return json.dumps(found, indent=1) if found else "no such chunk"
 
     @server.tool()
     def memory_forget(chunk_id: int) -> str:

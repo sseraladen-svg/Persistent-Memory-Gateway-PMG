@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Lossless raw log: every message that is not a secret is kept word for word, and each chunk links to the messages it came from. Replacing a fact keeps the history of what was said.
+- Short forms: when a chunk does not fit the token budget it is included as a few-word gist marked `(#id short)` instead of being dropped.
+- `memory_expand` MCP tool (and `Memory.expand`) returns the full chunk and its original messages.
+- Cost ledger: retrieval time and tokens are recorded per request; the dashboard shows the median time and how many original messages are kept.
+- Older databases are upgraded in place when opened.
+
+### Changed
+- `forget` now also deletes the raw messages linked to that chunk.
+
 ## 0.2.0
 
 The project is now a memory layer first, and a chat app second.

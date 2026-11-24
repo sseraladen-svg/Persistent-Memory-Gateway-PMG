@@ -242,10 +242,11 @@ async function loadStats() {
   rules = s.rules;
   const u = $("#usage"); u.textContent = "";
   if (!s.chunks) { u.append("Nothing stored yet. Add a memory, or connect an assistant and ask it to remember something."); return s; }
-  u.append(h("b", {}, plural(s.chunks, "memory", "memories")), `, about ${s.stored_tokens.toLocaleString()} tokens in total. `);
+  u.append(h("b", {}, plural(s.chunks, "memory", "memories")), `, about ${s.stored_tokens.toLocaleString()} tokens in total, with ${plural(s.raw_messages, "original message")} kept word for word. `);
   if (s.saved_percent !== null) {
     u.append(`Across the last ${plural(Math.min(s.requests, 200), "request")}, PMG loaded `, h("b", {}, `${s.avg_injected_tokens} tokens`),
-      " on average, which is ", h("b", {}, `${s.saved_percent}% less`), " than loading everything.");
+      " on average, which is ", h("b", {}, `${s.saved_percent}% less`), " than loading everything",
+      s.median_ms !== null ? `, in ${s.median_ms} ms (median).` : ".");
   } else u.append("No requests yet, so there are no savings to report.");
   return s;
 }

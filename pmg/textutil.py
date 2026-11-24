@@ -28,3 +28,11 @@ def keywords(text: str) -> list[str]:
 def unique_keywords(text: str, limit: int | None = None) -> list[str]:
     words = list(dict.fromkeys(keywords(text)))
     return words[:limit] if limit else words
+
+
+def make_gist(text: str, max_words: int = 12) -> str | None:
+    """A very short extractive form (the first words), or None when the text is already that short."""
+    words = text.split()
+    if len(words) <= max_words + 2:
+        return None
+    return " ".join(words[:max_words]).rstrip(",;:") + "..."

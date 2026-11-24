@@ -63,7 +63,7 @@ class McpTests(IsolatedTestCase):
             return names, str(result)
 
         names, result = asyncio.run(go())
-        self.assertEqual(names, {"memory_retrieve", "memory_remember", "memory_forget", "memory_list", "memory_tune"})
+        self.assertEqual(names, {"memory_retrieve", "memory_remember", "memory_expand", "memory_forget", "memory_list", "memory_tune"})
         self.assertIn("Biscuit", result)
 
 

@@ -48,7 +48,7 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (45 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `tests/`: unit and interface tests (55 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
 - `experiments/e1_topology_router/` and `experiments/e2_fingerprint_cascade/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
@@ -83,7 +83,7 @@ needs. 4. Ingestion: what to add for output quality.
   synthetic gym; needs confirming on real data).
 - Planned: three-level lossless storage; an append-only raw log with chunk byte offsets (idea kept from the user's
   MicroTQ sketch, which has no question-to-ID step and so does not solve retrieval); cheap-first ingestion;
-  information-per-token packing; information-per-token packing; cheap-first ADD/UPDATE/DELETE/NOOP ingestion;
+  information-per-token packing; ADD/UPDATE/DELETE/NOOP ingestion;
   waste-driven learning loop (waste = tokens loaded but never used); memory is data, not instructions.
 - Dropped: topology-aware routing (E1 failed); flat SimHash fingerprint scan + rerank as the first stage (E2 failed:
   at N=50k it needed about 20% of the store as shortlist to reach 0.95 overlap and was no faster than exact search).
@@ -92,6 +92,10 @@ needs. 4. Ingestion: what to add for output quality.
 ## Status
 
 - Done and pushed to main: package restructure, MCP server, proxy, dashboard, CLI, docs, CI, cost ledger, E1, E2.
+- Layer 1 storage done: append-only raw log (`raw` table, every non-secret message kept verbatim, linked to chunks),
+  gists as a fallback when a chunk does not fit the budget, `memory_expand` tool, in-place DB upgrade, retrieval time
+  in the dashboard. `forget` also deletes the linked raw messages (user-deletable).
+- Not yet measured: waste = tokens loaded but never used (needs feedback on what the model actually used).
 - Known weakness: keyword (FTS5) retrieval finds paraphrases poorly (hit@3 = 17% on a small test). Embeddings and
   hybrid retrieval are needed.
 
@@ -107,7 +111,7 @@ needs. 4. Ingestion: what to add for output quality.
 1. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
 2. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
    Also open: a sublinear first stage (buckets or a graph) for goals 2 and 14, tested on real embeddings.
-3. Layer 1 three-level storage; integrate the cost ledger into the server and dashboard; hybrid retrieval.
+3. Hybrid keyword + embedding retrieval (paraphrases); a way to measure unused tokens; ADD/UPDATE/DELETE/NOOP ingestion.
 
 ## How to work with this user
 
