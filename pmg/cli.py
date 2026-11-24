@@ -102,6 +102,22 @@ def cmd_mcp(args):
     return 0
 
 
+def cmd_bench(args):
+    from . import bench
+    try:
+        cases = bench.load_dataset(args.file, args.format)
+    except (OSError, ValueError) as err:
+        print(f"Could not read {args.file}: {err}", file=sys.stderr)
+        return 2
+    report = bench.run(cases, args.limit)
+    print(bench.format_report(report))
+    if args.json:
+        import json
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=1)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pmg", description="Persistent Memory Gateway: a memory layer for AI tools.")
     p.add_argument("--version", action="version", version=f"pmg {__version__}")
@@ -121,6 +137,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("stats", help="size and token savings").set_defaults(func=cmd_stats)
     sub.add_parser("rules", help="validate rules.json and show its location").set_defaults(func=cmd_rules)
+
+    s = sub.add_parser("bench", help="measure tokens loaded and recall on a dataset (LoCoMo, LongMemEval or generic JSON)")
+    s.add_argument("file"); s.add_argument("--format", default="auto", choices=["auto", "generic", "locomo", "longmemeval"])
+    s.add_argument("--limit", type=int, default=0, help="stop after this many questions"); s.add_argument("--json")
+    s.set_defaults(func=cmd_bench)
 
     s = sub.add_parser("dashboard", help="open the local dashboard")
     s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8787)

@@ -48,7 +48,7 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (74 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `tests/`: unit and interface tests (79 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
 - `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
@@ -102,6 +102,9 @@ needs. 4. Ingestion: what to add for output quality.
   fact or a polite standing instruction via `memory_remember`; the dashboard lets the user review and delete.
 - Concurrency (tests in `tests/test_concurrency.py`): writers take the lock first (`BEGIN IMMEDIATE`); rules file is
   written atomically. Threads and separate processes tested.
+- `pmg bench FILE` (pmg/bench.py, docs/BENCHMARKS.md): real-data measurement of tokens loaded vs recall for top-k, relative
+  cutoff and the product policy; adapters for LoCoMo and LongMemEval are written from the known layouts and NOT yet run
+  on the real files (the cloud workspace cannot download them). The user runs it on their machine.
 - Not yet measured: waste = tokens loaded but never used (needs feedback on what the model actually used).
 - Known weakness: keyword (FTS5) retrieval finds paraphrases poorly (hit@3 = 17% on a small test). Embeddings and
   hybrid retrieval are needed.
@@ -117,7 +120,9 @@ needs. 4. Ingestion: what to add for output quality.
 
 ## Next steps
 
-0. S3 (here): latency at 100k. S2 showed pruning helps (2.8x) but misses the 3x growth rule; test pruning plus moving the `uses` write off the hot path, with a new pre-registered rule.
+0. Run `pmg bench` on LoCoMo and LongMemEval on the user's machine and apply the E3 rule: the relative cutoff counts as
+   adopted only if it loads at least 10% fewer tokens than the best top-k at recall within 0.01 (check with a bootstrap).
+   Then S3 (here): latency at 100k. S2 showed pruning helps (2.8x) but misses the 3x growth rule; test pruning plus moving the `uses` write off the hot path, with a new pre-registered rule.
 1. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
 2. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
    Also open: a sublinear first stage (buckets or a graph) for goals 2 and 14, tested on real embeddings.

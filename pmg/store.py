@@ -242,6 +242,18 @@ class Memory:
                           (now, used, len(picked), stored, elapsed_ms))
         return {"chunks": picked, "tokens": used, "budget": budget, "text": format_chunks(picked)}
 
+    def candidates(self, query: str, limit: int = 50) -> list[tuple[int, str, float]]:
+        """Plain keyword matches for a query, best first: (chunk id, text, BM25 score). No budget, no rules."""
+        words = unique_keywords(query)
+        if not words:
+            return []
+        match = " OR ".join(f'"{w}"' for w in words)
+        with self._db() as c:
+            rows = c.execute(
+                "SELECT c.id, c.text, -bm25(chunks_fts) AS s FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                "WHERE chunks_fts MATCH ? ORDER BY s DESC LIMIT ?", (match, limit)).fetchall()
+        return [(r["id"], r["text"], r["s"]) for r in rows]
+
     def _drop_common_words(self, c, words: list[str]) -> list[str]:
         """Keep only words that help find something. A word in more than `common_df` chunks is dropped.
 

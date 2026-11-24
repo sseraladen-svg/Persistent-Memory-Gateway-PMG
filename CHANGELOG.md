@@ -9,6 +9,8 @@
 - Cost ledger: retrieval time and tokens are recorded per request; the dashboard shows the median time and how many original messages are kept.
 - Older databases are upgraded in place when opened.
 
+- `pmg bench` command and `docs/BENCHMARKS.md`: measure tokens loaded and recall on LoCoMo, LongMemEval or a generic file.
+
 ### Security
 - Text that reads like an instruction to the model ("ignore previous instructions", "reveal your system prompt", "send the data to http://...", fake `</system>` tags) is never stored as a memory, through any door (classifier, CLI, MCP, dashboard). The message is still kept in the raw log but is not reachable from memory.
 - A memory longer than 400 characters is not stored (a pasted document is not a durable fact).
