@@ -14,7 +14,7 @@
 - Faster requests on large stores: the stored-token total is kept by SQL triggers instead of summing every chunk on each request, and usage counters and event rows are written in batches (every 25 requests or 2 seconds, on `stats()`/`list()`, and at exit). Median request time at 100,000 chunks fell from 60 ms to 33 ms with identical results.
 - Optional word pruning (`Memory.common_df`, off by default) cuts the 100,000-chunk request time to about 14 ms.
 
-- Experimental `Memory.supersede` (off by default): a note that only changes a trailing number or date replaces the older note, and the older message stays in the raw log. Tested for safety (no false replacements on 200 distractor pairs) but it did not meet its recall target yet.
+- Outdated notes are replaced: when a new note is the same as an older one of the same kind except for a different value at the end ("deadline is March 3" -> "deadline is now March 10"), it replaces the older note and the older message stays in the raw log. Switch off with `Memory.supersede = False`. Text values ("owner is Priya" -> "owner is Ravi") are not handled.
 
 - Waste estimate: the proxy checks how much of the memory it loaded had its key words echoed in the model's reply (JSON or streamed) and the dashboard shows it. It is an estimate, not a measurement of use, and standing instructions are not counted.
 

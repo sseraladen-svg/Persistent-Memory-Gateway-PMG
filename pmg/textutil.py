@@ -44,23 +44,37 @@ def is_value_token(token: str) -> bool:
     return bool(_NUMERIC.fullmatch(token)) or token in MONTHS
 
 
+FILLER = frozenset("now currently updated update changed new actually".split())
+_ASSIGN = frozenset("is are was to at be".split())
+
+
+def _raw_tokens(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9]+(?:[.,:/%-][0-9]+)*", text.lower())
+
+
+def _split_value(text: str):
+    """(tokens before the value run, the value run, the token that introduces it) for a note ending in a value."""
+    toks = _raw_tokens(text)
+    i = len(toks)
+    while i > 0 and is_value_token(toks[i - 1]):
+        i -= 1
+    if i == len(toks):
+        return None
+    j = i
+    while j > 0 and toks[j - 1] in FILLER:
+        j -= 1
+    if j == 0 or toks[j - 1] not in _ASSIGN:
+        return None
+    prefix = [t for t in toks[:i] if t not in STOPWORDS and t not in FILLER]
+    return prefix, toks[i:], toks[j - 1]
+
+
 def replaces(new: str, old: str) -> bool:
-    """True when `new` looks like the same note with a changed number or date at the end (see E8)."""
-    a, b = slot_tokens(new), slot_tokens(old)
-    shared = set(a) & set(b)
-    only_a, only_b = [t for t in a if t not in shared], [t for t in b if t not in shared]
-    if not only_a or not only_b:
+    """True when `new` is the same note as `old` with a different value at the end (see experiments/e8_supersede)."""
+    a, b = _split_value(new), _split_value(old)
+    if not a or not b:
         return False
-    if not all(is_value_token(t) for t in only_a + only_b):
-        return False
-    # How alike the notes are is judged on content words only: a changed month or number is the point, not a difference.
-    content = lambda toks: {t for t in toks if not is_value_token(t)}
-    shared_content = shared & content(a) & content(b)
-    if len(shared_content) < 2 or len(shared_content) < 0.6 * min(len(content(a)), len(content(b))):
-        return False
-    last_shared = lambda toks: max((i for i, t in enumerate(toks) if t in shared), default=-1)
-    first_diff = lambda toks: min(i for i, t in enumerate(toks) if t not in shared)
-    return first_diff(a) > last_shared(a) and first_diff(b) > last_shared(b)
+    return a[0] == b[0] and len(a[0]) >= 2 and a[1] != b[1]
 
 
 def make_gist(text: str, max_words: int = 12) -> str | None:

@@ -79,7 +79,7 @@ class Memory:
         self.db_path = str(db_path or config.db_path())
         self.ledger = Ledger()
         self.common_df = COMMON_TERM_DF  # 0 switches word pruning off
-        self.supersede = False  # replace a note when a new one only changes a number or date at the end (E8)
+        self.supersede = True  # replace a note when a new one only changes the value at its end (E8c passed)
         self._common_cache: dict[str, tuple[bool, float]] = {}
         self.defer_writes = True  # batch usage counters and event rows instead of committing on every request
         self._lock = threading.Lock()
