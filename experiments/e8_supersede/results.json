@@ -1,0 +1,40 @@
+{
+ "baseline": {
+  "tail_ok": 0.0,
+  "tail_ok_no_filler": 0.0,
+  "tail_stale_all": 1.0,
+  "mid_ok": 0.0,
+  "text_ok": 0.0,
+  "false_replacement": 0.0,
+  "false_replacement_by_kind": {
+   "dA": 0.0,
+   "dB": 0.0,
+   "dC": 0.0
+  },
+  "chunks": 700
+ },
+ "feature": {
+  "tail_ok": 0.02,
+  "tail_ok_no_filler": 0.04,
+  "tail_stale_all": 0.98,
+  "mid_ok": 0.0,
+  "text_ok": 0.0,
+  "false_replacement": 0.0,
+  "false_replacement_by_kind": {
+   "dA": 0.0,
+   "dB": 0.0,
+   "dC": 0.0
+  },
+  "chunks": 698
+ },
+ "stale_among_replaced": 0.0,
+ "baseline_stale_all": 1.0,
+ "collateral_loss": 0,
+ "checks": {
+  "tail_replaced_ge_0.45_and_no_filler_ge_0.9": false,
+  "false_replacement_le_0.01": true,
+  "stale_80pct_lower_among_replaced": true,
+  "no_collateral_loss": true
+ },
+ "pass": false
+}

@@ -15,7 +15,7 @@ from typing import Optional
 from . import classify, config, rules as rules_mod
 from .ledger import Ledger
 from .llm import Completer
-from .textutil import est_tokens, make_gist, normalize, unique_keywords
+from .textutil import est_tokens, make_gist, normalize, replaces, unique_keywords
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS chunks (
@@ -79,6 +79,7 @@ class Memory:
         self.db_path = str(db_path or config.db_path())
         self.ledger = Ledger()
         self.common_df = COMMON_TERM_DF  # 0 switches word pruning off
+        self.supersede = False  # replace a note when a new one only changes a number or date at the end (E8)
         self._common_cache: dict[str, tuple[bool, float]] = {}
         self.defer_writes = True  # batch usage counters and event rows instead of committing on every request
         self._lock = threading.Lock()
@@ -139,6 +140,16 @@ class Memory:
                     c.execute("DELETE FROM chunks_fts WHERE rowid = ?", (row["id"],))
                     c.execute("INSERT INTO chunks_fts(rowid, text, tags) VALUES (?,?,?)", (row["id"], text, tags))
                     return row["id"]
+            if not key and self.supersede:
+                older = self._superseded(c, kind, text)
+                if older:
+                    c.execute("UPDATE chunks SET text=?, norm=?, tags=?, importance=?, updated_at=?, gist=?, "
+                              "raw_id=COALESCE(?, raw_id) WHERE id=?", (text, norm, tags, importance, now, gist, raw_id, older))
+                    c.execute("DELETE FROM chunks_fts WHERE rowid = ?", (older,))
+                    c.execute("INSERT INTO chunks_fts(rowid, text, tags) VALUES (?,?,?)", (older, text, tags))
+                    if raw_id:
+                        c.execute("UPDATE raw SET chunk_id = ? WHERE id = ?", (older, raw_id))
+                    return older
             cur = c.execute(
                 "INSERT INTO chunks (kind,text,norm,tags,key,importance,created_at,updated_at,gist,raw_id) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?)", (kind, text, norm, tags, key, importance, now, now, gist, raw_id))
@@ -271,6 +282,19 @@ class Memory:
         if self.defer_writes and (ids or log):
             self._buffer_usage(ids, now, (now, used, len(picked), stored, elapsed_ms) if log else None)
         return {"chunks": picked, "tokens": used, "budget": budget, "text": format_chunks(picked)}
+
+    def _superseded(self, c, kind: str, text: str) -> Optional[int]:
+        """The id of an existing note of the same kind that `text` replaces, if any (cheap check, no LLM)."""
+        words = unique_keywords(text)
+        if not words:
+            return None
+        match = " OR ".join(f'"{w}"' for w in words)
+        for r in c.execute(
+                "SELECT c.id, c.text, c.kind FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
+                "WHERE chunks_fts MATCH ? ORDER BY bm25(chunks_fts) LIMIT 5", (match,)):
+            if r["kind"] == kind and replaces(text, r["text"]):
+                return r["id"]
+        return None
 
     def _buffer_usage(self, ids: list[int], now: float, event: Optional[tuple]) -> None:
         """Remember usage counters and the event row, and write them in a batch instead of one commit per request."""

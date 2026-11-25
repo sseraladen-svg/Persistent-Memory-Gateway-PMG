@@ -30,6 +30,36 @@ def unique_keywords(text: str, limit: int | None = None) -> list[str]:
     return words[:limit] if limit else words
 
 
+MONTHS = frozenset("january february march april may june july august september october november december "
+                   "jan feb mar apr jun jul aug sep sept oct nov dec".split())
+_NUMERIC = re.compile(r"[0-9][0-9.,:/%-]*[a-z]{0,3}")
+
+
+def slot_tokens(text: str) -> list[str]:
+    """Lowercase tokens in order, keeping numbers, without stopwords."""
+    return [w for w in re.findall(r"[a-z0-9]+(?:[.,:/%-][0-9]+)*", text.lower()) if w not in STOPWORDS]
+
+
+def is_value_token(token: str) -> bool:
+    return bool(_NUMERIC.fullmatch(token)) or token in MONTHS
+
+
+def replaces(new: str, old: str) -> bool:
+    """True when `new` looks like the same note with a changed number or date at the end (see E8)."""
+    a, b = slot_tokens(new), slot_tokens(old)
+    shared = set(a) & set(b)
+    only_a, only_b = [t for t in a if t not in shared], [t for t in b if t not in shared]
+    if not only_a or not only_b or len(shared) < 2:
+        return False
+    if not all(is_value_token(t) for t in only_a + only_b):
+        return False
+    if len(shared) < 0.6 * min(len(set(a)), len(set(b))):
+        return False
+    last_shared = lambda toks: max((i for i, t in enumerate(toks) if t in shared), default=-1)
+    first_diff = lambda toks: min(i for i, t in enumerate(toks) if t not in shared)
+    return first_diff(a) > last_shared(a) and first_diff(b) > last_shared(b)
+
+
 def make_gist(text: str, max_words: int = 12) -> str | None:
     """A very short extractive form (the first words), or None when the text is already that short."""
     words = text.split()
