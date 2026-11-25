@@ -49,11 +49,14 @@ def replaces(new: str, old: str) -> bool:
     a, b = slot_tokens(new), slot_tokens(old)
     shared = set(a) & set(b)
     only_a, only_b = [t for t in a if t not in shared], [t for t in b if t not in shared]
-    if not only_a or not only_b or len(shared) < 2:
+    if not only_a or not only_b:
         return False
     if not all(is_value_token(t) for t in only_a + only_b):
         return False
-    if len(shared) < 0.6 * min(len(set(a)), len(set(b))):
+    # How alike the notes are is judged on content words only: a changed month or number is the point, not a difference.
+    content = lambda toks: {t for t in toks if not is_value_token(t)}
+    shared_content = shared & content(a) & content(b)
+    if len(shared_content) < 2 or len(shared_content) < 0.6 * min(len(content(a)), len(content(b))):
         return False
     last_shared = lambda toks: max((i for i, t in enumerate(toks) if t in shared), default=-1)
     first_diff = lambda toks: min(i for i, t in enumerate(toks) if t not in shared)
