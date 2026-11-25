@@ -91,6 +91,8 @@ class Memory:
         atexit.register(lambda: ref() and ref()._flush_quietly())
         with self._db() as c:
             c.executescript(SCHEMA)
+            for key in ("echo_measured", "echo_echoed", "echo_requests"):
+                c.execute("INSERT OR IGNORE INTO meta (key, value) VALUES (?, 0)", (key,))
             if c.execute("SELECT 1 FROM meta WHERE key = 'stored_tokens'").fetchone() is None:
                 c.execute(f"INSERT INTO meta (key, value) SELECT 'stored_tokens', COALESCE(SUM({_COST}), 0) FROM chunks")
             for table, column, decl in MIGRATIONS:
@@ -283,6 +285,15 @@ class Memory:
             self._buffer_usage(ids, now, (now, used, len(picked), stored, elapsed_ms) if log else None)
         return {"chunks": picked, "tokens": used, "budget": budget, "text": format_chunks(picked)}
 
+    def note_echo(self, measured_tokens: int, echoed_tokens: int) -> None:
+        """Add one reply to the running estimate of how much loaded memory was echoed (see pmg.waste)."""
+        if measured_tokens <= 0:
+            return
+        with self._db() as c:
+            c.execute("UPDATE meta SET value = value + ? WHERE key = 'echo_measured'", (measured_tokens,))
+            c.execute("UPDATE meta SET value = value + ? WHERE key = 'echo_echoed'", (echoed_tokens,))
+            c.execute("UPDATE meta SET value = value + 1 WHERE key = 'echo_requests'")
+
     def _superseded(self, c, kind: str, text: str) -> Optional[int]:
         """The id of an existing note of the same kind that `text` replaces, if any (cheap check, no LLM)."""
         words = unique_keywords(text)
@@ -367,6 +378,7 @@ class Memory:
                 "SELECT injected_tokens, stored_tokens, ms FROM events ORDER BY id DESC LIMIT 200").fetchall()
             requests = c.execute("SELECT COUNT(*) FROM events").fetchone()[0]
             raw_messages = c.execute("SELECT COUNT(*) FROM raw").fetchone()[0]
+            echo = {r["key"]: r["value"] for r in c.execute("SELECT key, value FROM meta WHERE key LIKE 'echo_%'")}
         injected = sum(r["injected_tokens"] for r in recent)
         baseline = sum(r["stored_tokens"] for r in recent)
         saved = round(100 * (1 - injected / baseline), 1) if baseline > 0 else None
@@ -374,6 +386,8 @@ class Memory:
             "chunks": total, "stored_tokens": stored, "kinds": kinds, "requests": requests,
             "avg_injected_tokens": round(injected / len(recent), 1) if recent else None,
             "saved_percent": saved, "raw_messages": raw_messages,
+            "echo_percent": round(100 * echo["echo_echoed"] / echo["echo_measured"], 1) if echo.get("echo_measured") else None,
+            "echo_requests": echo.get("echo_requests", 0),
             "median_ms": round(sorted(r["ms"] for r in recent)[len(recent) // 2], 2) if recent else None,
         }
 

@@ -16,6 +16,8 @@
 
 - Experimental `Memory.supersede` (off by default): a note that only changes a trailing number or date replaces the older note, and the older message stays in the raw log. Tested for safety (no false replacements on 200 distractor pairs) but it did not meet its recall target yet.
 
+- Waste estimate: the proxy checks how much of the memory it loaded had its key words echoed in the model's reply (JSON or streamed) and the dashboard shows it. It is an estimate, not a measurement of use, and standing instructions are not counted.
+
 ### Security
 - Text that reads like an instruction to the model ("ignore previous instructions", "reveal your system prompt", "send the data to http://...", fake `</system>` tags) is never stored as a memory, through any door (classifier, CLI, MCP, dashboard). The message is still kept in the raw log but is not reachable from memory.
 - A memory longer than 400 characters is not stored (a pasted document is not a durable fact).

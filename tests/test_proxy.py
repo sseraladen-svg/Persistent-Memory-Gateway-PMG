@@ -18,6 +18,7 @@ class FakeUpstream:
     def __init__(self):
         outer = self
         self.requests = []
+        self.reply = "hi"
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):
@@ -52,7 +53,7 @@ class FakeUpstream:
                         self.wfile.flush()
                     self.wfile.write(b"data: [DONE]\n\n")
                     return
-                body = json.dumps({"choices": [{"message": {"role": "assistant", "content": "hi"}}]}).encode()
+                body = json.dumps({"choices": [{"message": {"role": "assistant", "content": outer.reply}}]}).encode()
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
@@ -101,6 +102,21 @@ class ProxyTests(IsolatedTestCase):
         self.assertIn("Biscuit", first["content"])
         self.assertIn("short sentences", first["content"])
         self.assertEqual(payload["messages"][-1]["content"], "what should my dog eat?")
+
+    def test_echo_is_estimated_from_the_reply(self):
+        self.upstream.reply = "Biscuit should eat dog food twice a day."
+        self.post({"model": "m", "messages": [{"role": "user", "content": "what should my dog eat?"}]}).close()
+        deadline = time.time() + 5
+        while time.time() < deadline and self.memory.stats()["echo_requests"] < 1:
+            time.sleep(0.05)
+        stats = self.memory.stats()
+        self.assertEqual(stats["echo_requests"], 1)
+        self.assertEqual(stats["echo_percent"], 100.0)
+        self.upstream.reply = "I cannot say."
+        self.post({"model": "m", "messages": [{"role": "user", "content": "what should my dog eat?"}]}).close()
+        while time.time() < deadline and self.memory.stats()["echo_requests"] < 2:
+            time.sleep(0.05)
+        self.assertEqual(self.memory.stats()["echo_percent"], 50.0)
 
     def test_streaming_is_relayed(self):
         with self.post({"model": "m", "stream": True,

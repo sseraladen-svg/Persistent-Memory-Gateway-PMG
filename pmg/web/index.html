@@ -248,6 +248,10 @@ async function loadStats() {
       " on average, which is ", h("b", {}, `${s.saved_percent}% less`), " than loading everything",
       s.median_ms !== null ? `, in ${s.median_ms} ms (median).` : ".");
   } else u.append("No requests yet, so there are no savings to report.");
+  if (s.echo_percent !== null) {
+    u.append(` In ${plural(s.echo_requests, "measured reply", "measured replies")}, about `, h("b", {}, `${s.echo_percent}%`),
+      " of the loaded memory had its key words echoed in the reply (an estimate; the rest may not have been needed).");
+  }
   return s;
 }
 

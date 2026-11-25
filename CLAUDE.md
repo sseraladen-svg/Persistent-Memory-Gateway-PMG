@@ -48,7 +48,7 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (91 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `tests/`: unit and interface tests (98 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
 - `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`, `s3_hot_path/`, `e8_supersede/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
@@ -108,7 +108,11 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg bench FILE` (pmg/bench.py, docs/BENCHMARKS.md): real-data measurement of tokens loaded vs recall for top-k, relative
   cutoff and the product policy; adapters for LoCoMo and LongMemEval are written from the known layouts and NOT yet run
   on the real files (the cloud workspace cannot download them). The user runs it on their machine.
-- Not yet measured: waste = tokens loaded but never used (needs feedback on what the model actually used).
+- Waste estimate (`pmg/waste.py`, proxy only): after each reply the proxy checks whether the loaded *matched* chunks had
+  >=30% of their key words echoed in the reply; counters live in the `meta` table and `stats()` reports `echo_percent`.
+  This is an ESTIMATE (a fact can be used without being repeated, and the reverse), never validated against real model
+  answers. Validate it on the user's machine before using it to tune rules. Standing instructions are not counted.
+- The MCP path has no reply to look at, so waste is not measured there.
 - Known weakness: keyword (FTS5) retrieval finds paraphrases poorly (hit@3 = 17% on a small test). Embeddings and
   hybrid retrieval are needed.
 
@@ -133,7 +137,7 @@ needs. 4. Ingestion: what to add for output quality.
 1. Real-data check of the relative cutoff on LoCoMo/LongMemEval with a real embedding model (user's machine).
 2. Vague-question abstention (P1b injects about 920 tokens on questions needing nothing).
    Also open: a sublinear first stage (buckets or a graph) for goals 2 and 14, tested on real embeddings.
-3. Hybrid keyword + embedding retrieval (paraphrases); a way to measure unused tokens; ADD/UPDATE/DELETE/NOOP ingestion.
+3. Hybrid keyword + embedding retrieval (paraphrases); validate the echo estimate against real replies; ADD/UPDATE/DELETE/NOOP ingestion.
 
 ## How to work with this user
 

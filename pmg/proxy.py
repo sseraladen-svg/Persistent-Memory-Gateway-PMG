@@ -15,6 +15,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Optional
 
+from . import waste
 from .llm import Completer
 from .store import Memory
 
@@ -63,7 +64,7 @@ def make_server(upstream: str, memory: Memory, complete: Optional[Completer] = N
             self.end_headers()
             self.wfile.write(body)
 
-        def _forward(self, method: str, body: Optional[bytes]):
+        def _forward(self, method: str, body: Optional[bytes], on_reply=None):
             req = urllib.request.Request(self._target(), data=body, method=method, headers=self._headers())
             try:
                 resp = urllib.request.urlopen(req, timeout=600)
@@ -78,6 +79,7 @@ def make_server(upstream: str, memory: Memory, complete: Optional[Completer] = N
                         self.send_header(k, v)
                 self.send_header("Connection", "close")  # body ends when the connection closes (works for SSE)
                 self.end_headers()
+                seen = bytearray()
                 try:
                     while True:
                         chunk = resp.read1(8192) if hasattr(resp, "read1") else resp.read(8192)
@@ -85,8 +87,13 @@ def make_server(upstream: str, memory: Memory, complete: Optional[Completer] = N
                             break
                         self.wfile.write(chunk)
                         self.wfile.flush()
+                        if on_reply and len(seen) < waste.MAX_REPLY_BYTES:
+                            seen += chunk
                 except (BrokenPipeError, ConnectionResetError):
                     pass
+                status = resp.status if hasattr(resp, "status") else resp.code
+                if on_reply and status == 200 and seen:
+                    on_reply(bytes(seen))
 
         # -- routes
         def do_GET(self):
@@ -102,6 +109,7 @@ def make_server(upstream: str, memory: Memory, complete: Optional[Completer] = N
 
         def do_POST(self):
             raw = self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            on_reply = None
             if self.path.rstrip("/").endswith("/chat/completions"):
                 try:
                     body = json.loads(raw)
@@ -110,11 +118,15 @@ def make_server(upstream: str, memory: Memory, complete: Optional[Completer] = N
                     return self._send_error(400, "Request body must be JSON with a messages list.")
                 user_text = last_user_text(messages)
                 if user_text:
-                    block = memory.retrieve(user_text)["text"]
-                    if block:
-                        body["messages"] = [{"role": "system", "content": block}, *messages]
+                    result = memory.retrieve(user_text)
+                    if result["text"]:
+                        body["messages"] = [{"role": "system", "content": result["text"]}, *messages]
                     threading.Thread(target=memory.ingest, args=(user_text, complete), daemon=True).start()
+                    if any(c.get("why") == "match" for c in result["chunks"]):
+                        def on_reply(data, chunks=result["chunks"]):
+                            echoed, measured = waste.echoed_tokens(chunks, waste.reply_text(data))
+                            threading.Thread(target=memory.note_echo, args=(measured, echoed), daemon=True).start()
                 raw = json.dumps(body).encode()
-            self._forward("POST", raw)
+            self._forward("POST", raw, on_reply)
 
     return ThreadingHTTPServer((host, port), Handler)
