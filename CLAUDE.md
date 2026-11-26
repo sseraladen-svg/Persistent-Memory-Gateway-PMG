@@ -48,7 +48,7 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `embed.py`/`ann.py`/`bench_llm.py` (kits, run on the user's machine), `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (109 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `tests/`: unit and interface tests (110 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
 - `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`, `s3_hot_path/`, `e8_supersede/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
@@ -130,7 +130,7 @@ needs. 4. Ingestion: what to add for output quality.
 
 ## Next steps
 
-(Kits ready, untested on real data: `pmg bench FILE [--embeddings http|st:MODEL] [--ann]` for E3/E5/E6; `pmg bench-llm FILE` for E7/E9/E10 and the echo check. All need the user's machine/model.)
+(One command for the user: `pmg validate locomo10.json [--embeddings st:all-MiniLM-L6-v2] [--llm]` writes pmg-validation.md with the E3 verdict. Kits ready, untested on real data: `pmg bench FILE [--embeddings http|st:MODEL] [--ann]` for E3/E5/E6; `pmg bench-llm FILE` for E7/E9/E10 and the echo check. All need the user's machine/model.)
 
 0. Run `pmg bench` on LoCoMo and LongMemEval on the user's machine and apply the E3 rule: the relative cutoff counts as
    adopted only if it loads at least 10% fewer tokens than the best top-k at recall within 0.01 (check with a bootstrap).

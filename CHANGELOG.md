@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- `pmg validate FILE`: runs the real-data checks and writes one report (with the E3 verdict) to paste back.
+
 - `pmg bench --embeddings` (hybrid retrieval rows) and `--ann` (IVF overlap/scan check); `pmg bench-llm` (answer accuracy per memory policy, echo-estimate check). Tested with fake embedder/model only.
 - Opt-in `Memory.evidence_rule` (E4: not adopted as default).
 

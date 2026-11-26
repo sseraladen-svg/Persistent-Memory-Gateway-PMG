@@ -61,6 +61,14 @@ class KitTests(IsolatedTestCase):
         b = p.parse_args(["bench-llm", "f.json", "--limit", "3"])
         self.assertEqual(b.limit, 3)
 
+    def test_validate_writes_report_with_e3_verdict(self):
+        import json, os
+        path = os.path.join(os.environ["PMG_DATA"], "d.json"); out = os.path.join(os.environ["PMG_DATA"], "r.md")
+        json.dump(DATA, open(path, "w"))
+        from pmg.cli import main
+        self.assertEqual(main(["validate", path, "--out", out]), 0)
+        self.assertIn("E3 rule", open(out).read())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -142,6 +142,48 @@ def cmd_bench_llm(args):
     return 0
 
 
+def cmd_validate(args):
+    """One command for the user's machine: runs every real-data check that is possible and writes one report."""
+    from . import bench, bench_llm
+    try:
+        cases = bench.load_dataset(args.file, args.format)
+    except (OSError, ValueError) as err:
+        print(f"Could not read {args.file}: {err}", file=sys.stderr)
+        return 2
+    out = ["# PMG validation report", "", f"File: {args.file}", ""]
+    embedder = None
+    if args.embeddings:
+        from . import embed
+        embedder = embed.from_spec(args.embeddings)
+    rep = bench.run(cases, args.limit, embedder=embedder, ann=bool(embedder))
+    out += ["## Retrieval (E3, E5, E6)", "", "```", bench.format_report(rep), "```", ""]
+    rows = rep["rows"]
+    topk = [r for r in rows if r["policy"].startswith("top-")]
+    cut = next((r for r in rows if r["policy"] == "cutoff 0.5"), None)
+    if topk and cut:
+        ok = [r for r in topk if r["recall"] >= cut["recall"] - 0.01]
+        best = min(ok, key=lambda r: r["mean_tokens"]) if ok else None
+        if best:
+            saving = 1 - cut["mean_tokens"] / best["mean_tokens"] if best["mean_tokens"] else 0
+            out.append(f"E3 rule (cutoff loads >=10% fewer tokens than the best top-k at recall within 0.01): "
+                       f"{'PASS' if saving >= 0.10 else 'FAIL'} (saving {saving:.0%} vs {best['policy']}; point estimate, no bootstrap).")
+        else:
+            out.append("E3 rule: FAIL (no top-k policy reaches the cutoff's recall; nothing to compare).")
+        out.append("")
+    complete = from_env()
+    if args.llm and complete is not None:
+        llm = bench_llm.run(cases, complete, args.llm_limit)
+        out += ["## Answer accuracy and echo check (E7, E9, E10)", "", "```", bench_llm.format_report(llm), "```", ""]
+    elif args.llm:
+        out += ["## Answer accuracy", "", "Skipped: set PMG_LLM_BASE_URL and PMG_LLM_MODEL (and PMG_LLM_KEY).", ""]
+    text = "\n".join(out)
+    print(text)
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(text)
+    print(f"\nWrote {args.out}. Paste it back into the chat.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="pmg", description="Persistent Memory Gateway: a memory layer for AI tools.")
     p.add_argument("--version", action="version", version=f"pmg {__version__}")
@@ -174,6 +216,12 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--limit", type=int, default=30, help="questions to ask (each costs about 5 model calls)")
     s.add_argument("--max-history-tokens", type=int, default=12000); s.add_argument("--json")
     s.set_defaults(func=cmd_bench_llm)
+
+    s = sub.add_parser("validate", help="run all real-data checks on a dataset and write one report to paste back")
+    s.add_argument("file"); s.add_argument("--format", default="auto", choices=["auto", "generic", "locomo", "longmemeval"])
+    s.add_argument("--limit", type=int, default=0); s.add_argument("--embeddings"); s.add_argument("--llm", action="store_true")
+    s.add_argument("--llm-limit", type=int, default=30); s.add_argument("--out", default="pmg-validation.md")
+    s.set_defaults(func=cmd_validate)
 
     s = sub.add_parser("dashboard", help="open the local dashboard")
     s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8787)
