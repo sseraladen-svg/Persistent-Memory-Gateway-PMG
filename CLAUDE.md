@@ -45,10 +45,10 @@ needs. 4. Ingestion: what to add for output quality.
 
 ## Repository layout
 
-- `pmg/`: `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
+- `pmg/`: `embed.py`/`ann.py`/`bench_llm.py` (kits, run on the user's machine), `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (100 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `tests/`: unit and interface tests (109 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
 - `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`, `s3_hot_path/`, `e8_supersede/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
@@ -125,9 +125,12 @@ needs. 4. Ingestion: what to add for output quality.
 | S2 | Does dropping query words found in >2000 chunks keep latency flat at 100k without losing details? | FAIL on the growth rule only: median 2.8 / 4.4 / 14.9 ms (1k / 10k / 100k) with pruning vs 2.4 / 5.3 / 41.7 off; p95 at 100k 22.5 vs 92.7 ms; recall identical (0.737 vs 0.737); growth 10k->100k 3.4x (limit 3x). Per the pre-set rule it is NOT adopted: `Memory.common_df` stays 0 (opt-in). The remaining 15 ms at 100k is the FTS query on rare words, ranking and the usage write. |
 | S3 | Does the real request path (`log=True`, which S1/S2 did not time) stay fast with a running token total, batched writes and pruning? | FAIL on growth only: median 1.7 / 3.1 / 13.9 ms and p95 19.4 ms at 100k vs baseline 3.1 / 7.5 / 60.1 ms (p95 102); recall equal (0.736 vs 0.733); no events lost; totals exact; growth 10k->100k 4.4x (limit 3x). S1 and S2 had understated cost: the logged path summed every chunk per request (O(N)). Per the rule the two safe changes stay; pruning stays off. Ablation without pruning: 1.6 / 4.4 / 33.2 ms. |
 | E8 / E8b / E8c | Can a cheap rule (no LLM) replace an outdated note when only the trailing value changes? | E8 FAIL (2/100 replaced: rule counted the changed month as a difference). E8b FAIL (0.42; month-only changes rejected; 0 false replacements). **E8c PASS** (seed 903, value run treated as a unit, identical prefix + "is/are/was/to/at/be" cue): 0.95 of 100 tail-numeric updates replaced (the 5 misses are the gym re-sending the old message after the update, i.e. last-write-wins), 0 false replacements over 250 distractor pairs (other entity, other attribute, sprint 3/4, year slots, week slots), no collateral loss. Adopted: `Memory.supersede = True` by default; the replaced message stays in the raw log. Not handled: textual values (need LLM slot keys) and values with units. Templated data: real phrasing is messier. |
+| E4 | Can a cheap word-statistics rule abstain on vague questions? | NOT ADOPTED. Vague and one-topic-word short questions look identical in word statistics; `Memory.evidence_rule` stays None (opt-in). See experiments/e4_abstain. |
 | E2 | Does a SimHash fingerprint cascade match exact dense retrieval with far less compute? | FAIL at N=50k: overlap@10 0.51 and recall -0.128 vs exact with the best grid point (256 bits, shortlist 320; 3.8% of bytes, 2.6x faster). Reaching 0.95 overlap needed a shortlist of about 10,000 (23% of bytes) and was no faster than exact. Vectors are random-projected TF-IDF, not real embeddings. |
 
 ## Next steps
+
+(Kits ready, untested on real data: `pmg bench FILE [--embeddings http|st:MODEL] [--ann]` for E3/E5/E6; `pmg bench-llm FILE` for E7/E9/E10 and the echo check. All need the user's machine/model.)
 
 0. Run `pmg bench` on LoCoMo and LongMemEval on the user's machine and apply the E3 rule: the relative cutoff counts as
    adopted only if it loads at least 10% fewer tokens than the best top-k at recall within 0.01 (check with a bootstrap).

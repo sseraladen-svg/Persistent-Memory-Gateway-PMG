@@ -1,0 +1,41 @@
+{
+ "results": {
+  "baseline": {
+   "tokens_D": 125.86363636363636,
+   "macro_recall_ABC": 0.7606837606837606,
+   "recall_E": 0.10888888888888888,
+   "tokens_E": 116.85333333333334
+  },
+  "(0.01, 5)": {
+   "tokens_D": 14.363636363636363,
+   "macro_recall_ABC": 0.7623931623931623,
+   "recall_E": 0.03777777777777778,
+   "tokens_E": 22.18
+  },
+  "(0.01, 50)": {
+   "tokens_D": 71.95454545454545,
+   "macro_recall_ABC": 0.7606837606837606,
+   "recall_E": 0.10888888888888888,
+   "tokens_E": 95.53333333333333
+  }
+ },
+ "verdicts": {
+  "(0.01, 5)": {
+   "checks": {
+    "D_tokens_down_80pct": true,
+    "ABC_recall_within_0.01": true,
+    "E_recall_within_0.05": false
+   },
+   "pass": false
+  },
+  "(0.01, 50)": {
+   "checks": {
+    "D_tokens_down_80pct": false,
+    "ABC_recall_within_0.01": true,
+    "E_recall_within_0.05": true
+   },
+   "pass": false
+  }
+ },
+ "adopted": null
+}

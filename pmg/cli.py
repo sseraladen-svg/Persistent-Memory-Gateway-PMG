@@ -109,8 +109,32 @@ def cmd_bench(args):
     except (OSError, ValueError) as err:
         print(f"Could not read {args.file}: {err}", file=sys.stderr)
         return 2
-    report = bench.run(cases, args.limit)
+    embedder = None
+    if args.embeddings:
+        from . import embed
+        embedder = embed.from_spec(args.embeddings)
+    report = bench.run(cases, args.limit, embedder=embedder, ann=args.ann)
     print(bench.format_report(report))
+    if args.json:
+        import json
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump(report, f, indent=1)
+    return 0
+
+
+def cmd_bench_llm(args):
+    from . import bench, bench_llm
+    complete = from_env()
+    if complete is None:
+        print("Set PMG_LLM_BASE_URL and PMG_LLM_MODEL (and PMG_LLM_KEY if needed) so questions can be answered.", file=sys.stderr)
+        return 2
+    try:
+        cases = bench.load_dataset(args.file, args.format)
+    except (OSError, ValueError) as err:
+        print(f"Could not read {args.file}: {err}", file=sys.stderr)
+        return 2
+    report = bench_llm.run(cases, complete, args.limit, args.max_history_tokens)
+    print(bench_llm.format_report(report))
     if args.json:
         import json
         with open(args.json, "w", encoding="utf-8") as f:
@@ -141,7 +165,15 @@ def build_parser() -> argparse.ArgumentParser:
     s = sub.add_parser("bench", help="measure tokens loaded and recall on a dataset (LoCoMo, LongMemEval or generic JSON)")
     s.add_argument("file"); s.add_argument("--format", default="auto", choices=["auto", "generic", "locomo", "longmemeval"])
     s.add_argument("--limit", type=int, default=0, help="stop after this many questions"); s.add_argument("--json")
+    s.add_argument("--embeddings", help="add embedding and hybrid rows: 'http' or 'st:<model>' (needs numpy)")
+    s.add_argument("--ann", action="store_true", help="with --embeddings, also check an IVF index against exact search")
     s.set_defaults(func=cmd_bench)
+
+    s = sub.add_parser("bench-llm", help="answer questions with a real model under each memory policy (costs API calls)")
+    s.add_argument("file"); s.add_argument("--format", default="auto", choices=["auto", "generic", "locomo", "longmemeval"])
+    s.add_argument("--limit", type=int, default=30, help="questions to ask (each costs about 5 model calls)")
+    s.add_argument("--max-history-tokens", type=int, default=12000); s.add_argument("--json")
+    s.set_defaults(func=cmd_bench_llm)
 
     s = sub.add_parser("dashboard", help="open the local dashboard")
     s.add_argument("--host", default="127.0.0.1"); s.add_argument("--port", type=int, default=8787)

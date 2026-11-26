@@ -36,6 +36,11 @@ def from_generic(data: dict) -> list[dict]:
     return cases
 
 
+def _answers(value) -> list[str]:
+    items = value if isinstance(value, list) else [value]
+    return [str(a) for a in items if a is not None and str(a).strip()]
+
+
 def from_locomo(data: list) -> list[dict]:
     cases = []
     for sample in data:
@@ -55,7 +60,7 @@ def from_locomo(data: list) -> list[dict]:
             if not needed:
                 skipped += 1  # unanswerable category or evidence we cannot map
                 continue
-            questions.append({"q": qa["question"], "needed": needed})
+            questions.append({"q": qa["question"], "needed": needed, "answers": _answers(qa.get("answer"))})
         cases.append({"messages": messages, "questions": questions, "skipped": skipped})
     return cases
 
@@ -72,8 +77,9 @@ def from_longmemeval(data: list) -> list[dict]:
         abstain = str(item.get("question_id", "")).endswith("_abs")
         if not needed and not abstain:
             continue
-        cases.append({"messages": messages, "questions": [{"q": item["question"], "needed": [], "abstain": True}
-                                                          if abstain else {"q": item["question"], "needed": needed}]})
+        cases.append({"messages": messages, "questions": [
+            {"q": item["question"], "needed": [], "abstain": True} if abstain
+            else {"q": item["question"], "needed": needed, "answers": _answers(item.get("answer"))}]})
     return cases
 
 
@@ -131,8 +137,38 @@ def _recall(q: dict, loaded_ids: set, loaded_text: str) -> Optional[float]:
     return None
 
 
-def run(cases: list[dict], limit_questions: int = 0) -> dict:
+EMB_K, EMB_MARGINS, HYBRID_K, RRF_K = (1, 3, 5, 10, 20), (0.05, 0.10, 0.15), (3, 5, 10), 60
+
+
+def _emb_policies(order, scores):
+    """Embedding and hybrid choices from an embedding ranking (`order`, `scores`) and the keyword candidates."""
+    top = scores[order[0]] if len(order) else 0.0
+    out = {f"emb top-{k}": [int(i) + 1 for i in order[:k]] for k in EMB_K}
+    for d in EMB_MARGINS:
+        out[f"emb margin {d}"] = [int(i) + 1 for i in order if scores[i] >= top - d][:MAX_CUTOFF_CHUNKS]
+    return out
+
+
+def _hybrid(order, cands):
+    """Reciprocal rank fusion of the embedding ranking and the keyword ranking (ids are chunk ids)."""
+    fused = {}
+    for rank, i in enumerate(order[:POOL]):
+        fused[int(i) + 1] = fused.get(int(i) + 1, 0.0) + 1.0 / (RRF_K + rank)
+    for rank, (cid, _, _) in enumerate(cands):
+        fused[cid] = fused.get(cid, 0.0) + 1.0 / (RRF_K + rank)
+    ranked = sorted(fused, key=lambda c: -fused[c])
+    out = {f"hybrid top-{k}": ranked[:k] for k in HYBRID_K}
+    top = fused[ranked[0]] if ranked else 0.0
+    out["hybrid cutoff 0.6"] = [c for c in ranked if fused[c] >= 0.6 * top][:MAX_CUTOFF_CHUNKS]
+    return out
+
+
+def run(cases: list[dict], limit_questions: int = 0, embedder=None, ann: bool = False) -> dict:
     names = [*POLICIES, "product (budget 400)"]
+    if embedder:
+        names += [*(f"emb top-{k}" for k in EMB_K), *(f"emb margin {d}" for d in EMB_MARGINS),
+                  *(f"hybrid top-{k}" for k in HYBRID_K), "hybrid cutoff 0.6"]
+    pooled_vectors, pooled_queries = [], []
     acc = {n: {"tokens": [], "recall": [], "ms": [], "abstain_tokens": []} for n in names}
     full_tokens, asked = [], 0
     for case in cases:
@@ -142,6 +178,10 @@ def run(cases: list[dict], limit_questions: int = 0) -> dict:
             saved = os.environ.get("PMG_DATA")
             try:
                 m = _build_store(messages, d)
+                if embedder:
+                    vectors = embedder(messages)
+                    texts_by_id = {i + 1: t for i, t in enumerate(messages)}
+                    pooled_vectors.append(vectors)
                 for q in case["questions"]:
                     if limit_questions and asked >= limit_questions:
                         break
@@ -156,6 +196,18 @@ def run(cases: list[dict], limit_questions: int = 0) -> dict:
                         ms = search_ms + (time.perf_counter() - t) * 1000
                         _record(acc[name], q, {c[0] for c in chosen}, " ".join(c[1] for c in chosen),
                                 sum(chunk_cost(c[1]) for c in chosen), ms)
+                    if embedder:
+                        import numpy as np
+                        t = time.perf_counter()
+                        qv = embedder([q["q"]])[0]
+                        scores = vectors @ qv
+                        order = np.argsort(-scores)[:POOL]
+                        emb_ms = (time.perf_counter() - t) * 1000
+                        pooled_queries.append(qv)
+                        chosen = {**_emb_policies(order, scores), **_hybrid(order, cands)}
+                        for name, ids in chosen.items():
+                            _record(acc[name], q, set(ids), " ".join(texts_by_id[i] for i in ids),
+                                    sum(chunk_cost(texts_by_id[i]) for i in ids), emb_ms + search_ms)
                     t = time.perf_counter()
                     r = m.retrieve(q["q"], log=False)
                     ms = (time.perf_counter() - t) * 1000
@@ -181,7 +233,12 @@ def run(cases: list[dict], limit_questions: int = 0) -> dict:
             "median_ms": statistics.median(a["ms"]),
             "mean_tokens_on_unanswerable": statistics.mean(a["abstain_tokens"]) if a["abstain_tokens"] else None,
         })
-    return {"questions": asked, "mean_full_history_tokens": mean_full, "rows": rows}
+    report = {"questions": asked, "mean_full_history_tokens": mean_full, "rows": rows}
+    if embedder and ann and pooled_vectors:
+        import numpy as np
+        from .ann import ivf_report
+        report["ann"] = ivf_report(np.concatenate(pooled_vectors), np.stack(pooled_queries))
+    return report
 
 
 def _record(slot, q, ids, text, tokens, ms):
@@ -201,5 +258,10 @@ def format_report(rep: dict) -> str:
         un = "-" if r["mean_tokens_on_unanswerable"] is None else f"{r['mean_tokens_on_unanswerable']:.0f}"
         out.append(f"{r['policy']:<22}{r['mean_tokens']:>8.0f}{r['percent_of_full_history']:>10.1f}%{rec:>9}"
                    f"{r['median_ms']:>8.2f}{un:>25}")
-    out += ["", "Recall is the share of needed messages that were loaded. Keyword search only (no embeddings)."]
+    if rep.get("ann"):
+        out += ["", "IVF index versus exact search over all pooled vectors (top-10):",
+                f"{'nprobe':>8}{'nlist':>8}{'overlap@10':>13}{'scanned':>10}"]
+        out += [f"{a['nprobe']:>8}{a['nlist']:>8}{a['overlap_at_k']:>13.3f}{a['scanned_fraction']:>9.1%}" for a in rep["ann"]]
+    out += ["", "Recall is the share of needed messages that were loaded. 'emb' and 'hybrid' rows exist only when "
+                "--embeddings is given; everything else is keyword search."]
     return "\n".join(out)

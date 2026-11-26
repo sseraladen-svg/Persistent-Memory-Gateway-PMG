@@ -44,3 +44,13 @@ same layout; they have not yet been run against the real files. If a file does n
   added; that is a known weakness, and this is how to measure it.
 - Numbers here are for your data and this machine. They are not comparable with published benchmark scores, which
   use different methods.
+
+## Embeddings, index check and answer accuracy
+
+- `pmg bench FILE --embeddings http` uses an OpenAI-compatible endpoint (`PMG_EMBED_BASE_URL`, `PMG_EMBED_MODEL`,
+  `PMG_EMBED_KEY`); `--embeddings st:all-MiniLM-L6-v2` uses sentence-transformers. Needs numpy. Adds embedding and
+  hybrid rows, which show whether paraphrases are found.
+- `--ann` adds an IVF check: how much of the exact nearest-neighbour answer is kept, and how much is scanned.
+- `pmg bench-llm FILE --limit 30` asks a real model each question with no memory, full history, cutoff, product
+  policy and short forms, and reports accuracy and prompt tokens. It also checks the reply-echo waste estimate.
+  It makes API calls; these paths were tested only with fake models.

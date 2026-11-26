@@ -43,7 +43,7 @@ class BenchTests(IsolatedTestCase):
             "qa": [{"question": "What is the dog called?", "answer": "Biscuit", "evidence": ["D1:1"], "category": 1},
                    {"question": "Unanswerable?", "evidence": [], "category": 5}]}]
         cases = bench.from_locomo(sample)
-        self.assertEqual(cases[0]["questions"], [{"q": "What is the dog called?", "needed": [0]}])
+        self.assertEqual(cases[0]["questions"], [{"q": "What is the dog called?", "needed": [0], "answers": ["Biscuit"]}])
         self.assertEqual(cases[0]["skipped"], 1)
 
     def test_longmemeval_adapter_uses_has_answer_and_abstain(self):

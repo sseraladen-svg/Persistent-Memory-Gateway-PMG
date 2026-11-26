@@ -79,8 +79,10 @@ class Memory:
         self.db_path = str(db_path or config.db_path())
         self.ledger = Ledger()
         self.common_df = COMMON_TERM_DF  # 0 switches word pruning off
+        self.evidence_rule: Optional[tuple[float, int]] = None  # (info_frac, rare_df); see experiments/e4_abstain
         self.supersede = True  # replace a note when a new one only changes the value at its end (E8c passed)
         self._common_cache: dict[str, tuple[bool, float]] = {}
+        self._count_cache: dict[tuple[str, int], tuple[int, float]] = {}
         self.defer_writes = True  # batch usage counters and event rows instead of committing on every request
         self._lock = threading.Lock()
         self._pending_uses: dict[int, int] = {}
@@ -239,6 +241,16 @@ class Memory:
                 with self.ledger.stage("retrieve.prune") as st:
                     words = self._drop_common_words(c, words)
                     st["ops"] = len(words)
+            evidence = None
+            if words and self.evidence_rule:
+                info_frac, rare_df = self.evidence_rule
+                seq = c.execute("SELECT seq FROM sqlite_sequence WHERE name = 'chunks'").fetchone()
+                cap = max(rare_df, int(info_frac * (seq[0] if seq else 0)))
+                counts = {w: self._word_count(c, w, cap + 1) for w in words}
+                informative = [w for w in words if counts[w] <= cap]
+                evidence = (informative, {w for w in informative if counts[w] <= rare_df})
+                if not informative:
+                    words = []
             if words:
                 match = " OR ".join(f'"{w}"' for w in words)
                 have = {p["id"] for p in picked}
@@ -250,6 +262,8 @@ class Memory:
                 scored = []
                 for r in rows:
                     if r["id"] in have:
+                        continue
+                    if evidence and not self._has_evidence(r["text"], *evidence):
                         continue
                     spec = rules["kinds"].get(r["kind"], {})
                     half_life = spec.get("half_life_days")
@@ -350,6 +364,24 @@ class Memory:
                 "SELECT c.id, c.text, -bm25(chunks_fts) AS s FROM chunks_fts JOIN chunks c ON c.id = chunks_fts.rowid "
                 "WHERE chunks_fts MATCH ? ORDER BY s DESC LIMIT ?", (match, limit)).fetchall()
         return [(r["id"], r["text"], r["s"]) for r in rows]
+
+    def _word_count(self, c, word: str, cap: int) -> int:
+        """How many chunks contain `word`, counted only up to `cap` (cached, so the cost stays bounded)."""
+        hit = self._count_cache.get((word, cap))
+        now = time.time()
+        if hit is None or now - hit[1] > _COMMON_RECHECK_S:
+            n = c.execute("SELECT COUNT(*) FROM (SELECT rowid FROM chunks_fts WHERE chunks_fts MATCH ? LIMIT ?)",
+                          (f'"{word}"', cap)).fetchone()[0]
+            hit = (n, now)
+            self._count_cache[(word, cap)] = hit
+        return hit[0]
+
+    @staticmethod
+    def _has_evidence(text: str, informative: list[str], rare: set[str]) -> bool:
+        """At least 2 distinct informative query words, or 1 rare one, appear in the chunk."""
+        tokens = set(re.findall(r"[a-z0-9]+", text.lower()))
+        matched = [w for w in informative if w in tokens or any(t.startswith(w) or w.startswith(t) for t in tokens if len(t) >= 3 and len(w) >= 3)]
+        return len(matched) >= 2 or any(w in rare for w in matched)
 
     def _drop_common_words(self, c, words: list[str]) -> list[str]:
         """Keep only words that help find something. A word in more than `common_df` chunks is dropped.

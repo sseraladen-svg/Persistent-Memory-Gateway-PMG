@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- `pmg bench --embeddings` (hybrid retrieval rows) and `--ann` (IVF overlap/scan check); `pmg bench-llm` (answer accuracy per memory policy, echo-estimate check). Tested with fake embedder/model only.
+- Opt-in `Memory.evidence_rule` (E4: not adopted as default).
+
 ### Added
 - Lossless raw log: every message that is not a secret is kept word for word, and each chunk links to the messages it came from. Replacing a fact keeps the history of what was said.
 - Short forms: when a chunk does not fit the token budget it is included as a few-word gist marked `(#id short)` instead of being dropped.
