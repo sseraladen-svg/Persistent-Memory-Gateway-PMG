@@ -79,6 +79,28 @@ class KitTests(IsolatedTestCase):
         self.assertAlmostEqual(_tokens_at_recall(topk, 0.650), 527, delta=2)
         self.assertIsNone(_tokens_at_recall(topk, 0.709))  # above the curve: cannot compare
 
+    def test_big_files_are_read_one_item_at_a_time(self):
+        import json, os
+        from pmg import bench
+        items = [{"question_id": f"q{i}", "question": f"what is item {i}", "answer": f"a{i}",
+                  "haystack_sessions": [[{"role": "user", "content": f"note {i} " + "x" * 200, "has_answer": True},
+                                         {"role": "assistant", "content": "ok"}]]} for i in range(30)]
+        path = os.path.join(os.environ["PMG_DATA"], "big.json")
+        json.dump(items, open(path, "w"))
+        old = bench._BIG_FILE
+        bench._BIG_FILE = 100  # force the streaming path on a small file
+        try:
+            streamed = bench.load_dataset(path)
+            small = list(streamed)
+            again = list(streamed)  # can be iterated twice
+        finally:
+            bench._BIG_FILE = old
+        self.assertEqual(len(small), 30)
+        self.assertEqual(small, again)
+        self.assertEqual(small, bench.load_dataset(path))
+        tiny = [x for x in bench.iter_json_array(path, block=64)]  # items split across many blocks
+        self.assertEqual(len(tiny), 30)
+
 
 if __name__ == "__main__":
     unittest.main()

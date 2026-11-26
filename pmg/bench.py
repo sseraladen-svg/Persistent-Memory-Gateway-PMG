@@ -84,19 +84,90 @@ def from_longmemeval(data: list) -> list[dict]:
     return cases
 
 
-def load_dataset(path: str, fmt: str = "auto") -> list[dict]:
+def iter_json_array(path: str, block: int = 4 << 20):
+    """Yield the items of a big top-level JSON array one at a time, so a 300 MB file never sits in memory."""
+    dec = json.JSONDecoder()
+    with open(path, encoding="utf-8") as f:
+        buf, pos, started, eof = "", 0, False, False
+        while True:
+            if not eof and len(buf) - pos < block // 4:
+                chunk = f.read(block)
+                if chunk:
+                    buf = buf[pos:] + chunk; pos = 0
+                else:
+                    eof = True
+            while pos < len(buf) and buf[pos] in " \t\r\n,":
+                pos += 1
+            if not started:
+                if pos >= len(buf):
+                    if eof:
+                        return
+                    continue
+                if buf[pos] != "[":
+                    raise ValueError("not a JSON array")
+                started, pos = True, pos + 1
+                continue
+            if pos >= len(buf):
+                if eof:
+                    return
+                continue
+            if buf[pos] == "]":
+                return
+            try:
+                item, end = dec.raw_decode(buf, pos)
+            except json.JSONDecodeError:
+                if eof:
+                    raise
+                chunk = f.read(block)  # the item continues in the next block
+                if chunk:
+                    buf = buf[pos:] + chunk; pos = 0
+                else:
+                    eof = True
+                continue
+            pos = end
+            yield item
+
+
+_BIG_FILE = 50 << 20
+
+
+class _LazyCases:
+    """Cases read from a big file one at a time; can be iterated more than once."""
+
+    def __init__(self, path: str, convert):
+        self.path, self.convert = path, convert
+
+    def __iter__(self):
+        for item in iter_json_array(self.path):
+            yield from self.convert([item])
+
+
+def _detect(first) -> str:
+    if isinstance(first, dict) and "conversation" in first:
+        return "locomo"
+    if isinstance(first, dict) and "haystack_sessions" in first:
+        return "longmemeval"
+    raise ValueError("Could not tell the file format; pass --format generic|locomo|longmemeval")
+
+
+def load_dataset(path: str, fmt: str = "auto"):
+    convert = {"locomo": from_locomo, "longmemeval": from_longmemeval}
+    if os.path.getsize(path) > _BIG_FILE and fmt in ("auto", "locomo", "longmemeval"):
+        first = next(iter_json_array(path), None)  # a big file is read item by item, never all at once
+        if first is None:
+            raise ValueError("the file is an empty list")
+        kind = _detect(first) if fmt == "auto" else fmt
+        return _LazyCases(path, convert[kind])
     with open(path, encoding="utf-8") as f:
         data = json.load(f)
     if fmt == "auto":
         if isinstance(data, dict) and "cases" in data:
             fmt = "generic"
-        elif isinstance(data, list) and data and "conversation" in data[0]:
-            fmt = "locomo"
-        elif isinstance(data, list) and data and "haystack_sessions" in data[0]:
-            fmt = "longmemeval"
+        elif isinstance(data, list) and data:
+            fmt = _detect(data[0])
         else:
             raise ValueError("Could not tell the file format; pass --format generic|locomo|longmemeval")
-    return {"generic": from_generic, "locomo": from_locomo, "longmemeval": from_longmemeval}[fmt](data)
+    return {"generic": from_generic, **convert}[fmt](data)
 
 
 # ------------------------------------------------------------------ policies
