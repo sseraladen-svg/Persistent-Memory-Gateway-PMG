@@ -53,3 +53,18 @@ same printed numbers (plain top-k: 0.316/39, 0.470/112, 0.539/183, 0.618/359, 0.
 **PASS on the pre-registered rule (2 of 4, both far above 10%)** on LoCoMo only. Candidate, not adopted:
 `Memory.retrieve` is unchanged until LongMemEval confirms it. E3 recomputed with the correct baseline is unchanged
 (FAIL: 310 vs 305 tokens).
+
+## Second outcome note: LongMemEval (500 questions, keyword search; user's machine)
+
+**FAIL, 0 of 4 settings** (the fixed `pmg validate` code, plain top-k baseline only):
+
+| setting | tokens / recall | plain top-k tokens at that recall | saving |
+|---|---|---|---|
+| top-1 +-1 | 902 / 0.424 | 389 | -132% |
+| top-2 +-1 | 1615 / 0.577 | 724 | -123% |
+| top-3 +-1 | 2293 / 0.674 | 1322 | -73% |
+| top-5 +-1 | 3473 / 0.767 | 2620 | -33% |
+
+LongMemEval turns are long (assistant replies), so each neighbour costs many tokens and the needed turn is not usually
+next to the match. The LoCoMo pass (short chatty turns) does not carry over. Per this protocol `Memory.neighbours`
+stays **off by default** (opt-in only). Nothing in the rules above was changed.
