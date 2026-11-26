@@ -142,6 +142,15 @@ def cmd_bench_llm(args):
     return 0
 
 
+def _tokens_at_recall(topk, recall):
+    """Tokens a plain top-k needs for this recall, by linear interpolation on the top-k curve (None if outside it)."""
+    pts = sorted((r["recall"], r["mean_tokens"]) for r in topk)
+    for (r0, t0), (r1, t1) in zip(pts, pts[1:]):
+        if r0 <= recall <= r1 and r1 > r0:
+            return t0 + (recall - r0) / (r1 - r0) * (t1 - t0)
+    return None
+
+
 def cmd_validate(args):
     """One command for the user's machine: runs every real-data check that is possible and writes one report."""
     from . import bench, bench_llm
@@ -175,6 +184,18 @@ def cmd_validate(args):
             out.append(f"E3 rule (cutoff loads >=10% fewer tokens than top-k at the same recall, interpolated): "
                        f"{'PASS' if saving >= 0.10 else 'FAIL'} (cutoff {cut['mean_tokens']:.0f} tokens vs top-k {need:.0f} at recall {cut['recall']:.3f}; saving {saving:.0%}; no bootstrap).")
         out.append("")
+    wins, lines = 0, []
+    for r in (r for r in rows if r["policy"].endswith("+-1")):
+        need = _tokens_at_recall(topk, r["recall"])
+        if need is None:
+            lines.append(f"  {r['policy']}: cannot compare (recall {r['recall']:.3f} outside the top-k curve)")
+            continue
+        saving = 1 - r["mean_tokens"] / need
+        wins += saving >= 0.10
+        lines.append(f"  {r['policy']}: {r['mean_tokens']:.0f} tokens at recall {r['recall']:.3f}; plain top-k needs {need:.0f}; saving {saving:.0%}")
+    if lines:
+        out += ["E11 (neighbour turns; PASS if at least 2 of 4 settings save >=10% at equal recall):", *lines,
+                f"E11 verdict: {'PASS' if wins >= 2 else 'FAIL'} ({wins} of {len(lines)} settings; point estimates).", ""]
     complete = from_env()
     if args.llm and complete is not None:
         llm = bench_llm.run(cases, complete, args.llm_limit)

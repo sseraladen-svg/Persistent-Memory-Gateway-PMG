@@ -67,7 +67,9 @@ class KitTests(IsolatedTestCase):
         json.dump(DATA, open(path, "w"))
         from pmg.cli import main
         self.assertEqual(main(["validate", path, "--out", out]), 0)
-        self.assertIn("E3 rule", open(out).read())
+        report = open(out).read()
+        self.assertIn("E3 rule", report)
+        self.assertIn("E11", report)
 
 
 if __name__ == "__main__":

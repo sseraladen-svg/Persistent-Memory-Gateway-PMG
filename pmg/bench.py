@@ -26,6 +26,7 @@ TOP_K = (1, 3, 5, 10, 20)
 BETAS = (0.3, 0.5, 0.7)
 POOL = 50
 MAX_CUTOFF_CHUNKS = 20
+WINDOW_K = (1, 2, 3, 5)  # E11: top-k hits plus the turn before and after each
 
 
 # ------------------------------------------------------------------ dataset adapters
@@ -164,7 +165,7 @@ def _hybrid(order, cands):
 
 
 def run(cases: list[dict], limit_questions: int = 0, embedder=None, ann: bool = False) -> dict:
-    names = [*POLICIES, "product (budget 400)"]
+    names = [*POLICIES, *(f"top-{k} +-1" for k in WINDOW_K), "product (budget 400)"]
     if embedder:
         names += [*(f"emb top-{k}" for k in EMB_K), *(f"emb margin {d}" for d in EMB_MARGINS),
                   *(f"hybrid top-{k}" for k in HYBRID_K), "hybrid cutoff 0.6"]
@@ -178,9 +179,9 @@ def run(cases: list[dict], limit_questions: int = 0, embedder=None, ann: bool = 
             saved = os.environ.get("PMG_DATA")
             try:
                 m = _build_store(messages, d)
+                texts_by_id = {i + 1: t for i, t in enumerate(messages)}
                 if embedder:
                     vectors = embedder(messages)
-                    texts_by_id = {i + 1: t for i, t in enumerate(messages)}
                     pooled_vectors.append(vectors)
                 for q in case["questions"]:
                     if limit_questions and asked >= limit_questions:
@@ -196,6 +197,10 @@ def run(cases: list[dict], limit_questions: int = 0, embedder=None, ann: bool = 
                         ms = search_ms + (time.perf_counter() - t) * 1000
                         _record(acc[name], q, {c[0] for c in chosen}, " ".join(c[1] for c in chosen),
                                 sum(chunk_cost(c[1]) for c in chosen), ms)
+                    for k in WINDOW_K:
+                        ids = sorted({j for c in cands[:k] for j in (c[0] - 1, c[0], c[0] + 1) if j in texts_by_id})
+                        _record(acc[f"top-{k} +-1"], q, set(ids), " ".join(texts_by_id[i] for i in ids),
+                                sum(chunk_cost(texts_by_id[i]) for i in ids), search_ms)
                     if embedder:
                         import numpy as np
                         t = time.perf_counter()

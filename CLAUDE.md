@@ -49,7 +49,7 @@ needs. 4. Ingestion: what to add for output quality.
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
 - `tests/`: unit and interface tests (110 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
-- `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`, `s3_hot_path/`, `e8_supersede/`: PROTOCOL.md, engine.py, run.py,
+- `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`, `s3_hot_path/`, `e8_supersede/`, `e11_neighbours/` (protocol written, awaiting the user's run): PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 
 ## Commands

@@ -24,7 +24,7 @@ class BenchTests(IsolatedTestCase):
         rep = bench.run(bench.from_generic(generic()))
         self.assertEqual(rep["questions"], 3)
         rows = {r["policy"]: r for r in rep["rows"]}
-        self.assertEqual(set(rows), {*bench.POLICIES, "product (budget 400)"})
+        self.assertEqual(set(rows), {*bench.POLICIES, *(f"top-{k} +-1" for k in bench.WINDOW_K), "product (budget 400)"})
         self.assertEqual(rows["top-3"]["recall"], 1.0)
         self.assertLess(rows["top-1"]["mean_tokens"], rows["top-20"]["mean_tokens"] + 1e-9)
         self.assertEqual(rows["top-3"]["mean_tokens_on_unanswerable"], 0)  # nothing matches "meaning of life"
