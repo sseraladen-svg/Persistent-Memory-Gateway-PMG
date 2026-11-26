@@ -50,6 +50,11 @@ class KitTests(IsolatedTestCase):
         self.assertLess(rows["cutoff 0.5"]["mean_prompt_tokens"], rows["full history"]["mean_prompt_tokens"] + 1)
         self.assertIn("accuracy", bench_llm.format_report(rep))
 
+    def test_empty_or_null_replies_do_not_crash_and_are_flagged(self):
+        rep = bench_llm.run(bench.from_generic(DATA), lambda p: None, limit=2)
+        self.assertEqual(rep["empty_replies"], rep["calls"])
+        self.assertIn("WARNING", bench_llm.format_report(rep))
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))

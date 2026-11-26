@@ -35,7 +35,7 @@ def from_env() -> Optional[Completer]:
         for attempt in range(6):  # free tiers rate-limit: wait and retry instead of losing a long run
             try:
                 with urllib.request.urlopen(req, timeout=60) as response:
-                    return json.load(response)["choices"][0]["message"]["content"]
+                    return json.load(response)["choices"][0]["message"].get("content") or ""  # some models return null
             except urllib.error.HTTPError as err:
                 if err.code not in (429, 500, 502, 503, 504) or attempt == 5:
                     raise

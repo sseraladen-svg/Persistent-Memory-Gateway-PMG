@@ -50,7 +50,7 @@ def _memory_block(lines: list[str]) -> str:
 
 def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 12000) -> dict:
     acc = {c: {"correct": [], "prompt_tokens": []} for c in CONDITIONS}
-    echo_pairs, asked = [], 0
+    echo_pairs, asked, empty, calls = [], 0, 0, 0
     pick = bench.POLICIES["cutoff 0.5"]
     for case in cases:
         messages = case["messages"]
@@ -81,7 +81,8 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                     reply_for_echo = ""
                     for cond, lines in memory.items():
                         prompt = PROMPT.format(memory=_memory_block(lines), question=q["q"])
-                        reply = complete(prompt)
+                        reply = complete(prompt) or ""
+                        calls += 1; empty += not reply.strip()
                         acc[cond]["correct"].append(is_correct(reply, q["answers"]))
                         acc[cond]["prompt_tokens"].append(est_tokens(prompt))
                         if cond == "cutoff 0.5":
@@ -101,7 +102,7 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
             for c, a in acc.items() if a["correct"]]
     tp = sum(e and n for e, n in echo_pairs); fp = sum(e and not n for e, n in echo_pairs)
     fn = sum((not e) and n for e, n in echo_pairs); tn = sum((not e) and (not n) for e, n in echo_pairs)
-    return {"questions": asked, "rows": rows,
+    return {"questions": asked, "rows": rows, "empty_replies": empty, "calls": calls,
             "echo_check": {"loaded_chunks": len(echo_pairs), "echoed_and_needed": tp, "echoed_not_needed": fp,
                            "needed_not_echoed": fn, "neither": tn,
                            "agreement": (tp + tn) / len(echo_pairs) if echo_pairs else None}}
@@ -117,5 +118,8 @@ def format_report(rep: dict) -> str:
                     f"echoed and needed {e['echoed_and_needed']}, echoed but not needed {e['echoed_not_needed']}, "
                     f"needed but not echoed {e['needed_not_echoed']}, neither {e['neither']}; "
                     f"agreement {e['agreement']:.2f}."]
+    if rep.get("calls") and rep.get("empty_replies", 0) / rep["calls"] > 0.2:
+        out += ["", f"WARNING: {rep['empty_replies']} of {rep['calls']} model replies were empty. The accuracy numbers above "
+                    "are not trustworthy; try another model."]
     out += ["", "Accuracy uses answer containment or word-overlap F1 >= 0.5, not a model judge."]
     return "\n".join(out)
