@@ -167,7 +167,8 @@ def cmd_validate(args):
     rep = bench.run(cases, args.limit, embedder=embedder, ann=bool(embedder))
     out += ["## Retrieval (E3, E5, E6)", "", "```", bench.format_report(rep), "```", ""]
     rows = rep["rows"]
-    topk = [r for r in rows if r["policy"].startswith("top-")]
+    import re
+    topk = [r for r in rows if re.fullmatch(r"top-\d+", r["policy"])]  # plain top-k only, not the "+-1" rows
     cut = next((r for r in rows if r["policy"] == "cutoff 0.5"), None)
     if topk and cut:
         # Compare on the top-k curve: tokens a fixed top-k would need for the cutoff's recall (linear interpolation),

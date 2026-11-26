@@ -71,6 +71,14 @@ class KitTests(IsolatedTestCase):
         self.assertIn("E3 rule", report)
         self.assertIn("E11", report)
 
+    def test_tokens_at_recall_uses_plain_topk_curve(self):
+        from pmg.cli import _tokens_at_recall
+        topk = [{"recall": r, "mean_tokens": t} for r, t in
+                [(0.316, 39), (0.470, 112), (0.539, 183), (0.618, 359), (0.684, 706)]]
+        self.assertAlmostEqual(_tokens_at_recall(topk, 0.595), 307.8, delta=1)
+        self.assertAlmostEqual(_tokens_at_recall(topk, 0.650), 527, delta=2)
+        self.assertIsNone(_tokens_at_recall(topk, 0.709))  # above the curve: cannot compare
+
 
 if __name__ == "__main__":
     unittest.main()
