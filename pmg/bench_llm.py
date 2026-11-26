@@ -10,6 +10,7 @@ It also checks the waste estimate (pmg.waste) against ground truth: for chunks t
 from __future__ import annotations
 
 import os
+import sys
 import re
 import statistics
 import tempfile
@@ -61,6 +62,7 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                     if asked >= limit or not q.get("answers"):
                         continue
                     asked += 1
+                    print(f"question {asked}/{limit}", file=sys.stderr, flush=True)
                     cands = m.candidates(q["q"], bench.POOL)
                     chosen = pick(cands)
                     history, used = [], 0

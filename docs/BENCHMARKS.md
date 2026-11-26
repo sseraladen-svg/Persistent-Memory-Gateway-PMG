@@ -54,3 +54,13 @@ same layout; they have not yet been run against the real files. If a file does n
 - `pmg bench-llm FILE --limit 30` asks a real model each question with no memory, full history, cutoff, product
   policy and short forms, and reports accuracy and prompt tokens. It also checks the reply-echo waste estimate.
   It makes API calls; these paths were tested only with fake models.
+
+### Running `bench-llm` (PowerShell)
+
+```
+$env:PMG_LLM_BASE_URL = "https://openrouter.ai/api/v1"
+$env:PMG_LLM_MODEL    = "<a model id from your provider>"
+$env:PMG_LLM_KEY      = "<your key>"
+pmg bench-llm locomo10.json --limit 10
+```
+Any OpenAI-compatible endpoint works. Each question makes 5 model calls. Rate-limit errors (429) are retried with a wait.

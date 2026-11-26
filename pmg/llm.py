@@ -8,7 +8,9 @@ Any OpenAI-compatible endpoint works (Ollama, OpenRouter, a hosted API):
 from __future__ import annotations
 
 import json
+import time
 import os
+import urllib.error
 import urllib.request
 from typing import Callable, Optional
 
@@ -30,7 +32,16 @@ def from_env() -> Optional[Completer]:
         if key:
             headers["Authorization"] = f"Bearer {key}"
         req = urllib.request.Request(base.rstrip("/") + "/chat/completions", data=body, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as response:
-            return json.load(response)["choices"][0]["message"]["content"]
+        for attempt in range(6):  # free tiers rate-limit: wait and retry instead of losing a long run
+            try:
+                with urllib.request.urlopen(req, timeout=60) as response:
+                    return json.load(response)["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as err:
+                if err.code not in (429, 500, 502, 503, 504) or attempt == 5:
+                    raise
+            except urllib.error.URLError:
+                if attempt == 5:
+                    raise
+            time.sleep(2 ** (attempt + 1))
 
     return complete
