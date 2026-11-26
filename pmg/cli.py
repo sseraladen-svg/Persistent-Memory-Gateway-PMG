@@ -161,14 +161,19 @@ def cmd_validate(args):
     topk = [r for r in rows if r["policy"].startswith("top-")]
     cut = next((r for r in rows if r["policy"] == "cutoff 0.5"), None)
     if topk and cut:
-        ok = [r for r in topk if r["recall"] >= cut["recall"] - 0.01]
-        best = min(ok, key=lambda r: r["mean_tokens"]) if ok else None
-        if best:
-            saving = 1 - cut["mean_tokens"] / best["mean_tokens"] if best["mean_tokens"] else 0
-            out.append(f"E3 rule (cutoff loads >=10% fewer tokens than the best top-k at recall within 0.01): "
-                       f"{'PASS' if saving >= 0.10 else 'FAIL'} (saving {saving:.0%} vs {best['policy']}; point estimate, no bootstrap).")
+        # Compare on the top-k curve: tokens a fixed top-k would need for the cutoff's recall (linear interpolation),
+        # because the k grid is coarse and a plain "nearest k" comparison can show a false win.
+        pts = sorted((r["recall"], r["mean_tokens"]) for r in topk)
+        need = None
+        for (r0, t0), (r1, t1) in zip(pts, pts[1:]):
+            if r0 <= cut["recall"] <= r1 and r1 > r0:
+                need = t0 + (cut["recall"] - r0) / (r1 - r0) * (t1 - t0)
+        if need is None:
+            out.append("E3 rule: cannot compare (cutoff recall is outside the top-k curve).")
         else:
-            out.append("E3 rule: FAIL (no top-k policy reaches the cutoff's recall; nothing to compare).")
+            saving = 1 - cut["mean_tokens"] / need
+            out.append(f"E3 rule (cutoff loads >=10% fewer tokens than top-k at the same recall, interpolated): "
+                       f"{'PASS' if saving >= 0.10 else 'FAIL'} (cutoff {cut['mean_tokens']:.0f} tokens vs top-k {need:.0f} at recall {cut['recall']:.3f}; saving {saving:.0%}; no bootstrap).")
         out.append("")
     complete = from_env()
     if args.llm and complete is not None:
