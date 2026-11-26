@@ -80,6 +80,7 @@ class Memory:
         self.ledger = Ledger()
         self.common_df = COMMON_TERM_DF  # 0 switches word pruning off
         self.evidence_rule: Optional[tuple[float, int]] = None  # (info_frac, rare_df); see experiments/e4_abstain
+        self.neighbours = 0  # E11 candidate (passed on LoCoMo, not yet on LongMemEval): add the raw turn before/after the top N matches
         self.supersede = True  # replace a note when a new one only changes the value at its end (E8c passed)
         self._common_cache: dict[str, tuple[bool, float]] = {}
         self._count_cache: dict[tuple[str, int], tuple[int, float]] = {}
@@ -285,10 +286,12 @@ class Memory:
                             picked.append({**r, "text": short, "score": round(score, 3), "tokens": gist_cost,
                                            "why": "match", "level": "gist"})
                             used += gist_cost
-            ids = [p["id"] for p in picked]
+            ids = [p["id"] for p in picked]  # chunks only: neighbours are added after this line
             if ids and not self.defer_writes:
                 c.execute(f"UPDATE chunks SET uses = uses + 1, last_used = ? WHERE id IN ({','.join('?' * len(ids))})",
                           [now, *ids])
+            if self.neighbours:
+                used = self._add_neighbours(c, picked, used, budget, rules)
             stored = c.execute("SELECT value FROM meta WHERE key = 'stored_tokens'").fetchone()[0] if log else 0
             elapsed_ms = (time.perf_counter() - started) * 1000
             self.ledger.add("retrieve.total", elapsed_ms, tokens=used)
@@ -298,6 +301,29 @@ class Memory:
         if self.defer_writes and (ids or log):
             self._buffer_usage(ids, now, (now, used, len(picked), stored, elapsed_ms) if log else None)
         return {"chunks": picked, "tokens": used, "budget": budget, "text": format_chunks(picked)}
+
+    def _add_neighbours(self, c, picked: list, used: int, budget: int, rules: dict) -> int:
+        """E11: for the best `self.neighbours` matches, add the raw message just before and after (same source).
+
+        They come from the raw log, so they pass the same safety check as a new memory and the same budget as
+        everything else. They carry why='neighbour' and no chunk id, so no usage counters are written for them."""
+        hits = [p for p in picked if p.get("why") == "match" and p.get("raw_id")][: self.neighbours]
+        seen = {p.get("raw_id") for p in picked}
+        for hit in hits:
+            src = c.execute("SELECT source FROM raw WHERE id = ?", (hit["raw_id"],)).fetchone()
+            if not src:
+                continue
+            for r in c.execute("SELECT id, text FROM raw WHERE id IN (?, ?) AND source = ? ORDER BY id",
+                               (hit["raw_id"] - 1, hit["raw_id"] + 1, src["source"])):
+                if r["id"] in seen or classify.unsafe_reason(r["text"], rules):
+                    continue
+                cost = chunk_cost(r["text"])
+                if used + cost > budget:
+                    continue
+                picked.append({"id": None, "kind": "neighbour", "text": r["text"], "score": None, "tokens": cost,
+                               "why": "neighbour", "raw_id": r["id"]})
+                seen.add(r["id"]); used += cost
+        return used
 
     def note_echo(self, measured_tokens: int, echoed_tokens: int) -> None:
         """Add one reply to the running estimate of how much loaded memory was echoed (see pmg.waste)."""
