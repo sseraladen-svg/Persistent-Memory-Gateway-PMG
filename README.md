@@ -13,7 +13,7 @@ only the few lines it needs, so conversations stay personal while token usage st
 [![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-2EA44F.svg)](pyproject.toml)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Why PMG](#why-pmg) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Measured results](#measured-results) · [Strengths and limits](#advantages-limitations-and-how-to-overcome-them) · [Integrations](#integrations) · [Dashboard](#dashboard) · [Command line](#command-line) · [Design notes](#design-notes)
+[Why PMG](#why-pmg) · [Quick start](#quick-start) · [Use it](#use-it-day-to-day) · [How it works](#how-it-works) · [Measured results](#measured-results) · [Strengths and limits](#advantages-limitations-and-how-to-overcome-them) · [Integrations](#integrations) · [Dashboard](#dashboard) · [Command line](#command-line) · [Design notes](#design-notes)
 
 <img src="docs/assets/dashboard-playground.png" alt="The PMG dashboard: a message is typed and a strip shows 45 of 400 tokens used by four memories." width="49%"> <img src="docs/assets/dashboard-memory.png" alt="The PMG memory list in dark mode, with each memory colour-coded by kind." width="49%">
 
@@ -43,14 +43,62 @@ dashboard that shows what it loads and what it saves.
 
 ```bash
 pip install git+https://github.com/sseraladen-svg/Persistent-Memory-Gateway-PMG
-# or, from a clone:  pip install -e ".[mcp]"
+pip install mcp          # only needed to use PMG as an MCP server (Claude Desktop, Claude Code, Cursor)
 
+pmg --version
 pmg add remember that my dog is named Biscuit
 pmg search what should my dog eat
 pmg dashboard
 ```
 
-PMG has no runtime dependencies. The `mcp` extra is only needed for the MCP server.
+PMG itself has no runtime dependencies. Works on Windows, macOS and Linux with Python 3.10 or newer. For development,
+clone the repository and run `pip install -e ".[mcp]"` instead.
+
+## Use it day to day
+
+Pick the way that matches your AI tool. Both read and write the same local memory.
+
+### A. Claude Desktop, Claude Code or Cursor (MCP)
+
+1. Install as above, including `pip install mcp`.
+2. Find where `pmg` was installed: `where pmg` on Windows, `which pmg` on macOS and Linux.
+3. Add PMG to the client.
+   - **Claude Code:** `claude mcp add pmg -- pmg mcp`
+   - **Claude Desktop:** open Settings, then Developer, then Edit Config, and add this to `claude_desktop_config.json`
+     (on Windows it is in `%APPDATA%\Claude`). If `pmg` is not on the client's PATH, use the full path from step 2, and
+     double every backslash in JSON, for example `"C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python311\\Scripts\\pmg.exe"`.
+     ```json
+     { "mcpServers": { "pmg": { "command": "pmg", "args": ["mcp"] } } }
+     ```
+4. Restart the client. The `pmg` tools should appear in its tool list. Approve them when asked; "always allow" saves
+   repeated prompts.
+5. Try it. In one chat say: *"Remember that my audit deadline is March 3."* Open a **new** chat and ask: *"When is my
+   audit deadline?"*
+6. Check what was stored with `pmg list`, or open `pmg dashboard`.
+
+How reliably the model calls the memory tools on its own depends on the model and the client. If it does not, say
+"check your memory" or "remember this" and it will.
+
+### B. Any tool with a configurable OpenAI-compatible base URL (proxy)
+
+```bash
+pmg proxy --upstream https://openrouter.ai/api/v1 --port 8766
+```
+
+Set your tool's base URL to `http://127.0.0.1:8766/v1` and keep your normal API key. PMG adds the relevant memory to
+every request and stores what you say. Web apps such as ChatGPT in a browser cannot reach a program on your computer, so
+this route is for local tools, frameworks and routers.
+
+### Looking after your memory
+
+| Task | How |
+|---|---|
+| See, search, edit and delete memories | `pmg dashboard` |
+| Delete one memory (and its raw messages) | `pmg forget <id>` |
+| Change the budget or rules | edit `~/.pmg/rules.json`, or use the dashboard Rules tab |
+| Where is my data | `~/.pmg` (on Windows `C:\Users\<you>\.pmg`); set `PMG_DATA` to move it |
+| Start over | close PMG, then delete that folder |
+| Update PMG | run the `pip install --upgrade --force-reinstall git+...` command again |
 
 ## How it works
 
