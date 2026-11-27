@@ -48,7 +48,7 @@ def _memory_block(lines: list[str]) -> str:
     return "\n".join(f"- {' '.join(t.split())}" for t in lines) or "(nothing)"
 
 
-def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 12000) -> dict:
+def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 12000, conditions=None) -> dict:
     acc = {c: {"correct": [], "prompt_tokens": []} for c in CONDITIONS}
     echo_pairs, asked, empty, calls = [], 0, 0, 0
     pick = bench.POLICIES["cutoff 0.5"]
@@ -80,6 +80,8 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                     }
                     reply_for_echo = ""
                     for cond, lines in memory.items():
+                        if conditions and cond not in conditions:
+                            continue  # fewer calls per question (useful on rate-limited free keys)
                         prompt = PROMPT.format(memory=_memory_block(lines), question=q["q"])
                         reply = complete(prompt) or ""
                         calls += 1; empty += not reply.strip()

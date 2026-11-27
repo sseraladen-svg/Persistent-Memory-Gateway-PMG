@@ -66,6 +66,12 @@ class KitTests(IsolatedTestCase):
                 llm.from_env()("hi")
         self.assertIn("not a valid model ID", str(ctx.exception))
 
+    def test_conditions_subset_makes_fewer_calls(self):
+        rep = bench_llm.run(bench.from_generic(DATA), lambda p: "March 3", limit=2,
+                            conditions=["full history", "product (budget 400)"])
+        self.assertEqual(rep["calls"], 4)
+        self.assertEqual({r["condition"] for r in rep["rows"]}, {"full history", "product (budget 400)"})
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))
