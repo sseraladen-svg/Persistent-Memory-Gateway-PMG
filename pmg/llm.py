@@ -38,7 +38,11 @@ def from_env() -> Optional[Completer]:
                     return json.load(response)["choices"][0]["message"].get("content") or ""  # some models return null
             except urllib.error.HTTPError as err:
                 if err.code not in (429, 500, 502, 503, 504) or attempt == 5:
-                    raise
+                    try:
+                        detail = err.read().decode("utf-8", "replace")[:500]
+                    except Exception:
+                        detail = ""
+                    raise RuntimeError(f"The model server answered HTTP {err.code}: {detail or err.reason}") from err
             except urllib.error.URLError:
                 if attempt == 5:
                     raise

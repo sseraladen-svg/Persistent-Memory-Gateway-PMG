@@ -55,6 +55,17 @@ class KitTests(IsolatedTestCase):
         self.assertEqual(rep["empty_replies"], rep["calls"])
         self.assertIn("WARNING", bench_llm.format_report(rep))
 
+    def test_server_error_is_reported_not_a_traceback(self):
+        import io, os, urllib.error
+        from unittest import mock
+        from pmg import llm
+        err = urllib.error.HTTPError("http://x", 400, "Bad Request", {}, io.BytesIO(b'{"error":"not a valid model ID"}'))
+        env = {"PMG_LLM_BASE_URL": "http://x", "PMG_LLM_MODEL": "m"}
+        with mock.patch.dict(os.environ, env), mock.patch("urllib.request.urlopen", side_effect=err):
+            with self.assertRaises(RuntimeError) as ctx:
+                llm.from_env()("hi")
+        self.assertIn("not a valid model ID", str(ctx.exception))
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))

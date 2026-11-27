@@ -133,7 +133,11 @@ def cmd_bench_llm(args):
     except (OSError, ValueError) as err:
         print(f"Could not read {args.file}: {err}", file=sys.stderr)
         return 2
-    report = bench_llm.run(cases, complete, args.limit, args.max_history_tokens)
+    try:
+        report = bench_llm.run(cases, complete, args.limit, args.max_history_tokens)
+    except (RuntimeError, OSError) as err:
+        print(f"\nStopped: {err}", file=sys.stderr)
+        return 1
     print(bench_llm.format_report(report))
     if args.json:
         import json
@@ -199,7 +203,11 @@ def cmd_validate(args):
                 f"E11 verdict: {'PASS' if wins >= 2 else 'FAIL'} ({wins} of {len(lines)} settings; point estimates).", ""]
     complete = from_env()
     if args.llm and complete is not None:
-        llm = bench_llm.run(cases, complete, args.llm_limit)
+        try:
+            llm = bench_llm.run(cases, complete, args.llm_limit)
+        except (RuntimeError, OSError) as err:
+            print(f"\nStopped the answer test: {err}", file=sys.stderr)
+            return 1
         out += ["## Answer accuracy and echo check (E7, E9, E10)", "", "```", bench_llm.format_report(llm), "```", ""]
     elif args.llm:
         out += ["## Answer accuracy", "", "Skipped: set PMG_LLM_BASE_URL and PMG_LLM_MODEL (and PMG_LLM_KEY).", ""]
