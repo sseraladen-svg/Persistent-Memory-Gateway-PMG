@@ -52,7 +52,8 @@ who can reach it can read and change your memory.
 |---|---|
 | `memory_retrieve(query, budget_tokens)` | Returns the memories relevant to a message, within a token budget. |
 | `memory_remember(text, kind)` | Stores a fact, preference or instruction. Without `kind`, the classifier decides. |
-| `memory_forget(chunk_id)` | Deletes one memory. |
+| `memory_expand(chunk_id)` | Returns a chunk with the original raw messages behind it (use it when a memory is shown as `(#12 short)`). |
+| `memory_forget(chunk_id)` | Deletes one memory and its raw messages. |
 | `memory_list(limit)` | Lists what is stored. |
 | `memory_tune(apply)` | Asks the optional LLM for better numeric settings; applied only when `apply` is true. |
 

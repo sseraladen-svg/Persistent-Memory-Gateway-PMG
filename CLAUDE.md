@@ -48,7 +48,7 @@ needs. 4. Ingestion: what to add for output quality.
 - `pmg/`: `embed.py`/`ann.py`/`bench_llm.py` (kits, run on the user's machine), `store.py` (SQLite + FTS5 chunks, slot keys, events), `rules.py` + `rules.default.json`, `classify.py`,
   `llm.py`, `mcp_server.py` (works on mcp 1.x FastMCP and 2.x MCPServer), `proxy.py` (stdlib OpenAI-compatible),
   `dashboard.py` + `web/index.html`, `cli.py`, `config.py`, `textutil.py`, `ledger.py` (time/tokens/ops per stage).
-- `tests/`: unit and interface tests (115 passing). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
+- `tests/`: unit and interface tests (119 passing). `CONTRIBUTING.md`, `docs/HOW_IT_WORKS.md` (diagrams also in README). `docs/INTEGRATION.md`. `legacy/`: the original chat app.
 - `experiments/e1_topology_router/`, `e2_fingerprint_cascade/` and `s1_scale/`, `s2_term_pruning/`, `s3_hot_path/`, `e8_supersede/`, `e11_neighbours/`: PROTOCOL.md, engine.py, run.py,
   diagnose.py, RESULTS.md, DIAGNOSTICS.md (E2 reuses the E1 gym; both have an `engine.py`, so load one by path).
 

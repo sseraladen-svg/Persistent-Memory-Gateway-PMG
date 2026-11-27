@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Documentation: new README with the four how-it-works diagrams and measured results, `docs/HOW_IT_WORKS.md`, `CONTRIBUTING.md`.
+
 - Opt-in `Memory.neighbours`: also load the raw message before and after the best matches (E11 passed on LoCoMo; off by default until confirmed on LongMemEval).
 
 - `pmg validate FILE`: runs the real-data checks and writes one report (with the E3 verdict) to paste back.
