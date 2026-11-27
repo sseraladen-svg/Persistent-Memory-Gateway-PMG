@@ -13,7 +13,7 @@ only the few lines it needs, so conversations stay personal while token usage st
 [![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-2EA44F.svg)](pyproject.toml)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-[Why PMG](#why-pmg) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Measured results](#measured-results) · [Integrations](#integrations) · [Dashboard](#dashboard) · [Command line](#command-line) · [Design notes](#design-notes)
+[Why PMG](#why-pmg) · [Quick start](#quick-start) · [How it works](#how-it-works) · [Measured results](#measured-results) · [Strengths and limits](#advantages-limitations-and-how-to-overcome-them) · [Integrations](#integrations) · [Dashboard](#dashboard) · [Command line](#command-line) · [Design notes](#design-notes)
 
 <img src="docs/assets/dashboard-playground.png" alt="The PMG dashboard: a message is typed and a strip shows 45 of 400 tokens used by four memories." width="49%"> <img src="docs/assets/dashboard-memory.png" alt="The PMG memory list in dark mode, with each memory colour-coded by kind." width="49%">
 
@@ -167,6 +167,57 @@ What is **not** proven yet:
 - Finding needed messages is still only 56% to 68% on these datasets.
 - PMG does not know when nothing fits: for questions with no answer it still loads a few hundred tokens.
 - Retrieval time still grows with store size, more slowly than before.
+
+## Advantages, limitations and how to overcome them
+
+### Metrics at a glance
+
+All measured by us, on real data unless marked otherwise. Keyword search, product setting.
+
+| Metric | Result | Data |
+|---|---|---|
+| Memory sent per question | 218 tokens (LoCoMo), 375 tokens (LongMemEval) | real |
+| Share of full history sent | 1.1% and 0.3% (full history is 20,555 and 124,178 tokens) | real |
+| Share of needed messages found | 56% and 68% | real |
+| Lookup time | about 8 ms and 14 ms | real |
+| Lookup time at 100,000 stored chunks | median 14 ms (was 60 ms before the speed fixes) | synthetic store |
+| Outdated simple facts replaced | 95 of 100, with 0 wrong replacements | synthetic |
+| Tests | 119 passing (core, safety, concurrency, proxy, MCP, benchmarks) | n/a |
+
+For comparison on LoCoMo, a plain top-k keyword search needs about 183 tokens for 54% recall, 359 tokens for 62% and
+706 tokens for 68%. PMG's product setting sits on that same curve: its gain is the token reduction, not better matching.
+
+### Advantages
+
+- **Large, predictable token savings.** 0.2% to 5% of the history, with a hard cap per request.
+- **Lossless.** The raw log keeps every message, so shrinking never loses a detail you can later ask for.
+- **Fast and light.** One SQLite file, no services, no runtime dependencies, single-digit to low double-digit milliseconds.
+- **Model-independent.** The same memory serves Claude, ChatGPT and routers through MCP or an OpenAI-compatible proxy.
+- **Stays current.** A changed value replaces the old one instead of leaving two contradicting notes.
+- **Private and controllable.** Local storage, editable rules and chunks, real deletion (raw messages go too).
+- **Safer than a plain notes file.** Secrets and instruction-style text are refused, and stored text is shown as data.
+- **Measured, not claimed.** Each idea was tested against a baseline with the rule written first, and failures are kept
+  in the record.
+
+### Limitations and the planned ways to overcome them
+
+The "how to overcome" column lists ideas, not results. None has passed its test yet. Each would be a new experiment
+with its rule written before it runs.
+
+| Limitation (measured) | Why it happens | How we plan to overcome it |
+|---|---|---|
+| **Finds only 56% to 68% of needed messages.** Even loading 700 tokens finds about 68% on LoCoMo. | Many needed messages are short replies ("Yeah, that was great!") that share few words with the question. | Write each chunk so it stands on its own when it is saved (a cheap model rewrites it with who, what and when). Try a stronger embedding model and a re-ranking step; our one small model did worse than keywords. Use the opt-in neighbour setting on chatty data. |
+| **Cannot tell when nothing fits.** Questions with no answer still load about 400 tokens. | Keyword matching always returns something, and our word-count rule for abstaining failed. | Calibrate an absolute score cutoff on real data instead of word counts. Let the model decide when to call `memory_retrieve` (it already can over MCP). Try a cheap yes/no gate. |
+| **Lookup time still grows with store size.** About 14 ms at 100,000 chunks, 4.4x slower than at 10,000. | The full-text query scans long lists for common words. | Select only the most informative query terms. Test an index that scans a small share of the vectors; our first index check read 7% to 12% of the data for 90% to 96% overlap, which is not yet enough, and was run on a small set. |
+| **Misses paraphrases.** "Canine" will not find "dog". | Keyword search matches words, not meaning. | Store a few synonyms or aliases with each chunk when it is saved. Try other embedding models and hybrid search on paraphrase-heavy data. |
+| **Replaces outdated notes only for simple values** such as dates and numbers. | The rule is a cheap text comparison. | Let an optional model assign a slot key to each fact when it is saved, one small call per save. Test it on messy real phrasing. |
+| **Not proven that a real model answers better with this memory.** | The answer test is built but has not produced a usable result (free-model limits). | Run `pmg bench-llm` with a capable model, 30 or more questions, and report all five memory settings side by side. |
+| **The waste estimate is unvalidated.** | It guesses use from repeated words in the reply. | Compare it with the answer test's ground truth, which `pmg bench-llm` already prints. |
+| **Token counts are estimates** (about four characters per token). | No tokenizer is bundled, to keep zero dependencies. | Optional exact counting when a tokenizer is installed. |
+| **A poisoned model could store a plausible false fact.** | The safety checks catch instructions and secrets, not wrong facts. | Show where each memory came from, and flag new memories written by a model for your review in the dashboard. |
+| **Anything PMG adds goes to your model provider.** | That is how prompts work. | Use a local model for sensitive material. |
+
+The results table above and the [experiment log](CLAUDE.md) say what has been tried and what has failed.
 
 ## Integrations
 
