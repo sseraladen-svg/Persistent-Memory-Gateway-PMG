@@ -135,7 +135,7 @@ def cmd_bench_llm(args):
         return 2
     try:
         conds = [x.strip() for x in args.conditions.split(",")] if args.conditions else None
-        report = bench_llm.run(cases, complete, args.limit, args.max_history_tokens, conds)
+        report = bench_llm.run(cases, complete, args.limit, args.max_history_tokens, conds, args.stride)
     except (RuntimeError, OSError) as err:
         print(f"\nStopped: {err}", file=sys.stderr)
         return 1
@@ -251,6 +251,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("file"); s.add_argument("--format", default="auto", choices=["auto", "generic", "locomo", "longmemeval"])
     s.add_argument("--limit", type=int, default=30, help="questions to ask (each costs about 5 model calls)")
     s.add_argument("--max-history-tokens", type=int, default=12000); s.add_argument("--json")
+    s.add_argument("--stride", type=int, default=1, help="ask every Nth question, to spread a small sample over all conversations")
     s.add_argument("--conditions", help="comma-separated subset to run, e.g. 'full history,product (budget 400)' (fewer calls per question)")
     s.set_defaults(func=cmd_bench_llm)
 

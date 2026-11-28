@@ -72,6 +72,12 @@ class KitTests(IsolatedTestCase):
         self.assertEqual(rep["calls"], 4)
         self.assertEqual({r["condition"] for r in rep["rows"]}, {"full history", "product (budget 400)"})
 
+    def test_stride_spreads_the_sample(self):
+        data = {"cases": [{"messages": MESSAGES, "questions": [
+            {"q": f"when is the audit deadline {i}", "needed": [0], "answers": ["March 3"]} for i in range(6)]}]}
+        rep = bench_llm.run(bench.from_generic(data), lambda p: "March 3", limit=10, stride=3, conditions=["product (budget 400)"])
+        self.assertEqual(rep["questions"], 2)
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))

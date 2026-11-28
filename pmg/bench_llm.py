@@ -48,9 +48,9 @@ def _memory_block(lines: list[str]) -> str:
     return "\n".join(f"- {' '.join(t.split())}" for t in lines) or "(nothing)"
 
 
-def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 12000, conditions=None) -> dict:
+def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 12000, conditions=None, stride: int = 1) -> dict:
     acc = {c: {"correct": [], "prompt_tokens": []} for c in CONDITIONS}
-    echo_pairs, asked, empty, calls = [], 0, 0, 0
+    echo_pairs, asked, empty, calls, seen = [], 0, 0, 0, 0
     pick = bench.POLICIES["cutoff 0.5"]
     for case in cases:
         messages = case["messages"]
@@ -61,6 +61,9 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                 for q in case["questions"]:
                     if asked >= limit or not q.get("answers"):
                         continue
+                    seen += 1
+                    if (seen - 1) % max(1, stride):
+                        continue  # take every stride-th question, so a small sample covers every conversation
                     asked += 1
                     print(f"question {asked}/{limit}", file=sys.stderr, flush=True)
                     cands = m.candidates(q["q"], bench.POOL)
