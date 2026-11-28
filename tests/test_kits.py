@@ -91,6 +91,10 @@ class KitTests(IsolatedTestCase):
             self.assertEqual(llm.from_env()("hi"), "ok")
         self.assertEqual(seen["t"], 300.0)
 
+    def test_echo_check_is_skipped_when_cutoff_is_not_run(self):
+        rep = bench_llm.run(bench.from_generic(DATA), lambda p: "March 3", limit=2, conditions=["full history"])
+        self.assertEqual(rep["echo_check"]["loaded_chunks"], 0)
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))

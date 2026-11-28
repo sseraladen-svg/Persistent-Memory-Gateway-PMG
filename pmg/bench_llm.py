@@ -93,7 +93,7 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                         if cond == "cutoff 0.5":
                             reply_for_echo = reply
                     needed = {n + 1 for n in q.get("needed", [])}
-                    for cid, text, _ in chosen:
+                    for cid, text, _ in (chosen if not conditions or "cutoff 0.5" in conditions else []):  # the echo check needs the cutoff reply
                         e, t = waste.echoed_tokens([{"text": text, "tokens": chunk_cost(text), "why": "match"}], reply_for_echo)
                         echo_pairs.append((e > 0, cid in needed))
             finally:
