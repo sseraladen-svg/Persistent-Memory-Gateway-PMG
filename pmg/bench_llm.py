@@ -50,7 +50,7 @@ def _memory_block(lines: list[str]) -> str:
 
 def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 12000, conditions=None, stride: int = 1) -> dict:
     acc = {c: {"correct": [], "prompt_tokens": []} for c in CONDITIONS}
-    echo_pairs, asked, empty, calls, seen = [], 0, 0, 0, 0
+    echo_pairs, asked, empty, calls, seen, details = [], 0, 0, 0, 0, []
     pick = bench.POLICIES["cutoff 0.5"]
     for case in cases:
         messages = case["messages"]
@@ -82,6 +82,13 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                         "cutoff 0.5, short forms": [make_gist(c[1]) or c[1] for c in chosen],
                     }
                     reply_for_echo = ""
+                    needed_ids = {n + 1 for n in q.get("needed", [])}
+                    loaded_ids = {
+                        "full history": set(range(len(messages) - len(history) + 1, len(messages) + 1)),
+                        "cutoff 0.5": {c[0] for c in chosen}, "cutoff 0.5, short forms": {c[0] for c in chosen},
+                        "product (budget 400)": {c["id"] for c in product["chunks"]}, "no memory": set()}
+                    detail = {"question": q["q"], "gold": q["answers"][:2], "conditions": {}}
+                    details.append(detail)
                     for cond, lines in memory.items():
                         if conditions and cond not in conditions:
                             continue  # fewer calls per question (useful on rate-limited free keys)
@@ -90,6 +97,9 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
                         calls += 1; empty += not reply.strip()
                         acc[cond]["correct"].append(is_correct(reply, q["answers"]))
                         acc[cond]["prompt_tokens"].append(est_tokens(prompt))
+                        detail["conditions"][cond] = {
+                            "correct": acc[cond]["correct"][-1], "reply": " ".join(reply.split())[:200],
+                            "needed_message_loaded": (bool(needed_ids) and needed_ids <= loaded_ids[cond])}
                         if cond == "cutoff 0.5":
                             reply_for_echo = reply
                     needed = {n + 1 for n in q.get("needed", [])}
@@ -107,7 +117,7 @@ def run(cases: list[dict], complete, limit: int = 30, max_history_tokens: int = 
             for c, a in acc.items() if a["correct"]]
     tp = sum(e and n for e, n in echo_pairs); fp = sum(e and not n for e, n in echo_pairs)
     fn = sum((not e) and n for e, n in echo_pairs); tn = sum((not e) and (not n) for e, n in echo_pairs)
-    return {"questions": asked, "rows": rows, "empty_replies": empty, "calls": calls,
+    return {"questions": asked, "rows": rows, "empty_replies": empty, "calls": calls, "details": details,
             "echo_check": {"loaded_chunks": len(echo_pairs), "echoed_and_needed": tp, "echoed_not_needed": fp,
                            "needed_not_echoed": fn, "neither": tn,
                            "agreement": (tp + tn) / len(echo_pairs) if echo_pairs else None}}
@@ -126,5 +136,12 @@ def format_report(rep: dict) -> str:
     if rep.get("calls") and rep.get("empty_replies", 0) / rep["calls"] > 0.2:
         out += ["", f"WARNING: {rep['empty_replies']} of {rep['calls']} model replies were empty. The accuracy numbers above "
                     "are not trustworthy; try another model."]
+    if rep.get("show_details"):
+        out += ["", "Per question (was the needed message loaded? was the reply scored correct? what did the model say?):"]
+        for i, d in enumerate(rep.get("details", []), 1):
+            out += ["", f"{i}. {d['question']}", f"   gold answer: {d['gold']}"]
+            for cond, v in d["conditions"].items():
+                out.append(f"   [{cond}] needed message loaded: {'yes' if v['needed_message_loaded'] else 'no'}; "
+                           f"correct: {'yes' if v['correct'] else 'no'}; reply: {v['reply']}")
     out += ["", "Accuracy uses answer containment or word-overlap F1 >= 0.5, not a model judge."]
     return "\n".join(out)

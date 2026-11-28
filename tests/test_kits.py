@@ -95,6 +95,13 @@ class KitTests(IsolatedTestCase):
         rep = bench_llm.run(bench.from_generic(DATA), lambda p: "March 3", limit=2, conditions=["full history"])
         self.assertEqual(rep["echo_check"]["loaded_chunks"], 0)
 
+    def test_details_show_loaded_and_reply_per_question(self):
+        rep = bench_llm.run(bench.from_generic(DATA), lambda p: "March 3", limit=1, conditions=["product (budget 400)"])
+        rep["show_details"] = True
+        text = bench_llm.format_report(rep)
+        self.assertIn("needed message loaded: yes", text)
+        self.assertIn("gold answer", text)
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))
