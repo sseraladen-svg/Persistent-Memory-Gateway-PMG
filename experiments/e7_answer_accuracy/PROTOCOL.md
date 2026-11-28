@@ -46,3 +46,10 @@ The model is a setup parameter, not part of the rule. A local model served throu
 name and context size, and the same validity and pass/fail rules apply. A local model has no daily request cap, so the
 evidence run (at least 100 questions: `--limit 100 --stride 20`) becomes possible. `PMG_LLM_TIMEOUT` (seconds, default
 60) was added for slow local models.
+
+## Amendment 2 (added before any run; the rules above are unchanged)
+
+A run with fewer than 15 questions is a **smoke test**: it shows that the setup works and what the numbers look like, and it
+carries **no verdict** (neither PASS nor FAIL nor INVALID). The verdict rules apply only to runs of at least 15
+questions. The conditions may be run in separate commands on the same questions (same `--limit` and `--stride`) and their
+results combined, for machines that cannot run the long full-history prompt together with the others.
