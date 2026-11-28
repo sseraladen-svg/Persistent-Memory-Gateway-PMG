@@ -38,3 +38,11 @@ history?
 - Cutoff 0.5 accuracy and tokens, for comparison.
 - The echo-estimate check (agreement between the proxy's waste estimate and ground truth).
 - Per-condition accuracy differences are shown with the number of questions, not as percentages alone.
+
+## Amendment (added before any run; the rules above are unchanged)
+
+The model is a setup parameter, not part of the rule. A local model served through an OpenAI-compatible endpoint
+(Ollama, LM Studio, llama.cpp) may be used instead of the free OpenRouter model. Every run is reported with its model
+name and context size, and the same validity and pass/fail rules apply. A local model has no daily request cap, so the
+evidence run (at least 100 questions: `--limit 100 --stride 20`) becomes possible. `PMG_LLM_TIMEOUT` (seconds, default
+60) was added for slow local models.

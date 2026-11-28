@@ -78,6 +78,19 @@ class KitTests(IsolatedTestCase):
         rep = bench_llm.run(bench.from_generic(data), lambda p: "March 3", limit=10, stride=3, conditions=["product (budget 400)"])
         self.assertEqual(rep["questions"], 2)
 
+    def test_timeout_can_be_set_for_slow_local_models(self):
+        import os, io, json
+        from unittest import mock
+        from pmg import llm
+        seen = {}
+        def fake(req, timeout=None):
+            seen["t"] = timeout
+            return io.BytesIO(json.dumps({"choices": [{"message": {"content": "ok"}}]}).encode())
+        env = {"PMG_LLM_BASE_URL": "http://localhost:11434/v1", "PMG_LLM_MODEL": "m", "PMG_LLM_TIMEOUT": "300"}
+        with mock.patch.dict(os.environ, env), mock.patch("urllib.request.urlopen", fake):
+            self.assertEqual(llm.from_env()("hi"), "ok")
+        self.assertEqual(seen["t"], 300.0)
+
     def test_is_correct(self):
         self.assertTrue(bench_llm.is_correct("It is on March 3.", ["March 3"]))
         self.assertFalse(bench_llm.is_correct("no idea", ["March 3"]))

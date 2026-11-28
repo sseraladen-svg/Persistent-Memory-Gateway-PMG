@@ -64,3 +64,14 @@ $env:PMG_LLM_KEY      = "<your key>"
 pmg bench-llm locomo10.json --limit 10
 ```
 Any OpenAI-compatible endpoint works. Each question makes 5 model calls. Rate-limit errors (429) are retried with a wait.
+
+### Using a local model (Ollama, LM Studio, llama.cpp)
+
+```
+$env:PMG_LLM_BASE_URL = "http://localhost:11434/v1"     # Ollama; LM Studio uses http://localhost:1234/v1
+$env:PMG_LLM_MODEL    = "<the model name your server shows>"
+$env:PMG_LLM_KEY      = ""                                # usually not needed
+$env:PMG_LLM_TIMEOUT  = "300"                             # seconds per answer; local models can be slow
+```
+Make sure the model's context window is larger than the prompt. The "full history" condition sends up to 12,000 tokens
+(lower it with `--max-history-tokens`). A server that quietly cuts long prompts makes that condition look worse than it is.

@@ -34,7 +34,7 @@ def from_env() -> Optional[Completer]:
         req = urllib.request.Request(base.rstrip("/") + "/chat/completions", data=body, headers=headers)
         for attempt in range(6):  # free tiers rate-limit: wait and retry instead of losing a long run
             try:
-                with urllib.request.urlopen(req, timeout=60) as response:
+                with urllib.request.urlopen(req, timeout=float(os.environ.get("PMG_LLM_TIMEOUT", "60"))) as response:
                     return json.load(response)["choices"][0]["message"].get("content") or ""  # some models return null
             except urllib.error.HTTPError as err:
                 if err.code not in (429, 500, 502, 503, 504) or attempt == 5:
